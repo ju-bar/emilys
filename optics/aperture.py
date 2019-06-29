@@ -25,12 +25,13 @@ def aperture(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0.):
             edge smoothness
     """
     qs = np.abs(qsmt)
-    if qlim > 0.: # the aperture is open
+    ql = np.abs(qlim)
+    if ql > 0.: # the aperture is open
         dq = q - q0
         dqm2 = np.dot(dq,dq)
         if dqm2 > 0.: # the query point is away from the aperture center
             dqe = dq / np.sqrt(dqm2) # unit vector pointing from aperture center to query point
-            dql = dqe * qlim # vector from aperture center to its edge in direction of query point, if the aperture is not round, this would need to be modified
+            dql = dqe * ql # vector from aperture center to its edge in direction of query point, if the aperture is not round, this would need to be modified
             if qs > 0.: # the edge is smooth
                 dqd = dq - dql # vector from aperture edge to query point (along the connection to the aperture center)
                 arg = np.pi*np.dot(dqd,dqe) / qs # distance from the edge rescaled to Pi/qsmt
@@ -71,12 +72,13 @@ def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., 
     na = qdist.size # number of distortion parameters
     #print("dbg aperture_dist3: distortion parameters: na = ",na)
     qs = np.abs(qsmt) # strength of edge smoothness
-    if qlim > 0.: # the aperture is open
+    ql = np.abs(qlim) # aperture radius (must be positive)
+    if ql > 0.: # the aperture is open
         dq = q - q0
         dqm2 = np.dot(dq,dq)
         if dqm2 > 0.: # the query point is away from the aperture center
             dqe = dq / np.sqrt(dqm2) # unit vector pointing from aperture center to query point
-            dql = dqe * qlim # vector from aperture center to its edge in direction of query point
+            dql = dqe * ql # vector from aperture center to its edge in direction of query point
             dql3 = dql
             if na > 0: # there are edge distortion parameters
                 qx1 = dqe[0]
