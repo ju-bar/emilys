@@ -96,7 +96,7 @@ def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., 
                 arg = np.pi*np.dot(dqd,dqe) / qs # distance from the edge rescaled to Pi/qsmt
                 return 0.5*(1. - np.tanh(arg)) # sigmoid edge transition from 1 to 0 
             else: # the edge is sharp
-                if np.dot(dql,dql) > dqm2: # the query point is inside the aperture radius
+                if np.dot(dql3,dql3) > dqm2: # the query point is inside the aperture radius
                     return 1.
                 else: # the query point is outside the aperture radius
                     return 0.

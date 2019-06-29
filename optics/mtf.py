@@ -110,10 +110,10 @@ def getmtfkernel(lmtf, ndim, fsca=1.):
     # mtf grid calculation
     for j in range(0,ndim[0]): # loop rows
         fy2 = fy[j]**2 # squared row frequency
-        scy = np.sinc(np.pi * fy[j]) # row sinc
+        scy = np.sinc(fy[j]) # row sinc
         for i in range(0,ndim[1]): # loop columns
             fm2 = fx[i]**2 + fy2 # frequency modulus squared
-            scx = np.sinc(np.pi * fx[i]) # column sinc
+            scx = np.sinc(fx[i]) # column sinc
             fm = np.sqrt(fm2) # frequency modulus
             fms = fm*fsca # scaled frequency modulus
             # prepare linear interpolation on radial mtf list
