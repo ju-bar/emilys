@@ -14,6 +14,8 @@ def arrayplot2d(array, pixscale=1, colscale='gray', dpi=72, vrange=np.array([0.,
     ax.axis('off')
     vmin = np.amin(array)
     vmax = np.amax(array)
+    rmin = vmin * (1. - vrange[0])
+    rmax = vmax * vrange[1]
     arrshow = array
     if vrangetype == 'zerosym': # set value range symmetric around zero
         if vmax < 0:
