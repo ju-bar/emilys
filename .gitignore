@@ -5,7 +5,6 @@
 
 # Python notebook checkpoints
 .ipynb_checkpoints/
-*.ipynb
 
 # Python cache
 __pycache__/
