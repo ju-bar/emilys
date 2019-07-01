@@ -34,27 +34,6 @@ def arrayplot2d(array, pixscale=1, colscale='gray', dpi=72, vrange=np.array([0.,
     fig = plt.figure(figsize=(pixscale*nd[1]/dpi,pixscale*nd[0]/dpi), dpi=dpi)
     ax = fig.add_axes([0,0,1,1], frameon=False, aspect=1)
     ax.axis('off')
-    '''
-    vmin = np.amin(array)
-    vmax = np.amax(array)
-    rmin = vmin * (1. - vrange[0])
-    rmax = vmax * vrange[1]
-    arrshow = array
-    if vrangetype == 'zerosym': # set value range symmetric around zero
-        if vmax < 0:
-            vmax = np.abs(vmin)
-        else:
-            vmin = -vmax
-        rmin = vmin * (1. - vrange[0])
-        rmax = vmax * vrange[1]
-    elif vrangetype == 'direct': # set the value range directly from vrange
-        rmin = vrange[0]
-        rmax = vrange[1]
-    elif vrangetype == 'modulo': # use modulo on the value range
-        rmin = vrange[0]
-        rmax = vrange[1]
-        arrshow = np.mod(array - vrange[0], vrange[1] -vrange[0]) + vrange[0]
-    '''
     rmin, rmax, arrshow = get_value_range(array, vrange, vrangetype)
     ax.imshow(arrshow, cmap = colscale, origin = 'lower', vmin = rmin, vmax = rmax)
     return fig
