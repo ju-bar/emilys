@@ -6,26 +6,42 @@ Created on Sun Jul 1 17:15:00 2019
 import numpy as np
 # %%
 class cluster:
+    '''
+    
+    class cluster
+
+    Handles the assignment of a list item to a cluster, tracking mean and standard deviation
+    of cluster members.
+
+    Members:
+        mean : array_like
+            mean value of cluster items
+        sdev : array_like
+            standard deviation of cluster items
+        population : array
+            list of initial data indices populating the cluster
+    
+    '''
     def __init__(self, mean, sdev, population):
         self.mean = mean
         self.sdev = sdev
         self.population = population
 
     def update_stats(self, ldata):
-        self.mean = 0 * ldata[0]
-        self.sdev = 0 * ldata[0]
-        tmpval = self.mean
-        tmpsum = self.mean
-        tmpsqrs = tmpsum
-        np = len(self.population)
-        if np > 0:
+        val0 = ldata[0] * 0.
+        mean = val0
+        sdev = val0
+        tmpsum = val0
+        tmpsqrs = val0
+        npop = len(self.population)
+        if npop > 0:
             for i in self.population:
-                tmpval = ldata[self.population[i]]
-                tmpsum += tmpval
-                tmpsqrs += (tmpval * tmpval)
-            self.mean = tmpsum / np
-            if np > 1:
-                self.sdev = np.sqrt( tmpsqrs / np - self.mean * self.mean ) * np / (np - 1)
+                tmpval = ldata[i]
+                tmpsum = tmpsum + tmpval
+                tmpsqrs = tmpsqrs + tmpval**2
+            self.mean = tmpsum / npop
+            if npop > 1:
+                self.sdev = np.sqrt( np.abs( tmpsqrs / npop - self.mean*self.mean ) ) * npop / (npop - 1)
 
     def add_member_index(self, ldata, index):
         self.population.append(index)
@@ -35,6 +51,84 @@ class cluster:
         self.population.extend(other.population)
         self.update_stats(ldata)
 
+class cluster_assignment:
+    '''
+
+    Class cluster_assignment
+
+    Handles the cluster assignment and is returned from cluster finding algortithms.
+
+    Members:
+        lassign : array, int
+            forward assignment list (data index -> cluster index)
+        lcluster : array, cluster
+            list of cluster objects (cluster -> data indices)
+
+    '''
+    def __init__(self, nitems):
+        '''Initialize a cluster_assignment object for a given number of data items.'''
+        self.lassign = np.full(nitems, -1) # initialize forward list with no assignment
+        self.lcluster = [] # initialize empty cluster list
+
+    def add_to_cluster(self, idx_cluster, idx_item, ldata):
+        '''Adds a data item to an existing cluster.'''
+        ncl = len(self.lcluster)
+        nitems = len(self.lassign)
+        if idx_cluster >= 0 and idx_cluster < ncl and idx_item >= 0 and idx_item < nitems:
+            if self.lassign[idx_item] < 0:
+                self.lcluster[idx_cluster].add_member_index(ldata, idx_item)
+                self.lassign[idx_item] = idx_cluster
+                return 0 # success
+            return 20 # error, double assignment
+        return 10 # error, invalid index
+
+    def add_cluster(self, cluster):
+        '''Add a cluster, if no conflict is found. Returns list of conflicting items.'''
+        lconfl = [] # init list of assignment conflicts
+        newpopnum = len(cluster.population)
+        if newpopnum > 0:
+            for i in cluster.population:
+                if self.lassign[i] >= 0: # this item already has a cluster
+                    lconfl.append(i)
+            if len(lconfl) == 0: # no conflict -> add cluster
+                self.lcluster.append(cluster)
+                icl = len(self.lcluster) - 1
+                for i in cluster.population:
+                    self.lassign[i] = icl # set forward assignment
+                return [] # return empty list of conflicts
+            else: # ! conflict, return the list of conflicts
+                return lconfl
+        return [] # return empty list of conflicts
+
+    def del_cluster(self, idx):
+        '''Removes a cluster.'''
+        ncl = len(self.lcluster)
+        if idx >= 0 and idx < ncl:
+            self.lcluster.pop(idx)
+            # update the assignment list
+            for i in range(0, len(self.lassign)):
+                if self.lassign[i] == idx:
+                    self.lassign[i] = -1 # erase assignment
+                if self.lassign[i] > idx:
+                    self.lassign[i] -= 1 # decrement assignment to clusters following the deleted
+
+    def merge_clusters(self, itarget, isource):
+        '''Merges cluster isource to cluster itarget and updates the assignments. Returns list of conflicting items.'''
+        ncl = len(self.lcluster)
+        lconfl = []
+        if itarget >=0 and isource >= 0 and itarget < ncl and isource < ncl:
+            cl_target = self.lcluster[itarget]
+            cl_source = self.lcluster[isource]
+            cl_merge = cl_target
+            cl_merge.merge(cl_source)
+            self.del_cluster(itarget)
+            self.del_cluster(isource)
+            lconfl = self.add_cluster(cl_merge)
+            if len(lconfl) > 0: # This should never happen
+                # try reversing the deletion
+                self.add_cluster(cl_target)
+                self.add_cluster(cl_source)
+        return lconfl
 # %%
 def cluster_l2(ldata, l2_thresh=1., err=0):
     '''
@@ -65,43 +159,26 @@ def cluster_l2(ldata, l2_thresh=1., err=0):
     if lthr == 0.:
         err = 11
         return
-    lass = np.full(ndat,-1) # initialize assignement table
+    lass = cluster_assignment(ndat)
     nass = 0 # initialize number of assigned values
-    lcl = np.array([]) # initialize empty cluster table
-    ncl = 0 # initialize number of clusters
-    while nass < ndat: # loop to assign all values to clusters
-        for i in range(0, ndat): # loop over all items
-            if lass[i] >= 0: # unassigned item
-                lassi = [] # initialize assignment of this item
-                if ncl > 0: # try to find possible clusters
-                    for j in range(0, ncl):
-                        dist = lcl[j].mean - ldata[i] # cluster mean distance to query point
-                        if np.sqrt(np.dot(dist,dist)) < l2_thresh: # cluster mean distance is below threshold
-                            lassi.append(j)
-                if len(lassi) == 0: # no good cluster found
-                    lcl.append([ldata[i],np.zeros(ndim),[i]]) # add new cluster
-                    ncl += 1 # raise counts of clusters
-                    lass[i] = ncl - 1 # mark this item as assigned
-                    nass -= 1 # decrease number of assigned items
-                elif len(lassi) == 1: # one good cluster found
-                    j = lassi[0] # cluster index in lcl
-                    lcl[j].add_member_index(ldata, i) # populate the cluster
-                    lass[i] = j # mark this item as assigned
-                    nass -= 1 # decrease number of assigned items
-                else: # multiple clusters are in threshold range
-                    # add new member to the first cluster
-                    j = lassi[0] # cluster index in lcl
-                    lcl[j].add_member_index(ldata, i) # populate the cluster
-                    lass[i] = j # mark this item as assigned
-                    nass -= 1 # decrease number of assigned items
-                    # re-think the cluster connection, this might not be wise here
-                    # could be done at the end
-                    for l in range(1,len(lassi)): # connect also the other clusters
-                        k = lassi[l]
-                        lcl[j].merge(lcl[l],ldata) # merges the populations
-                    # remove connected clusters
-                    for l in range(len(lassi)-2,-1,-1): # loop through reversed list and exclude the last item (which is the merged cluster)
-                        k = lassi[l] # cluster index to remove
-                        lcl.pop(k) # remove cluster at index k
-                        ncl -= 1 # decrease number of clusters
-    return lcl
+    for i in range(0, ndat): # loop over all items
+        iclclose = -1 # remember index of closest cluster
+        dclclose = 1000. * lthr # initialize closest cluster distance to very large
+        if len(lass.lcluster) > 0: # try to find possible clusters
+            for j in range(0, len(lass.lcluster)): # loop over current clusters
+                vdist = lass.lcluster[j].mean - ldata[i] # cluster mean distance vector to query point
+                dist = np.sqrt(np.dot(vdist,vdist)) # cluster mean distance
+                if dist < l2_thresh: # cluster mean distance is below threshold
+                    if dist < dclclose: # closest cluster ?
+                        dclclose = dist # remember
+                        iclclose = j
+        if iclclose < 0: # no good cluster found
+            # create and add a new cluster
+            cl_new = cluster(ldata[i],np.zeros(ndim),[i])
+            if len(lass.add_cluster(cl_new)) == 0: 
+                nass += 1 # increase number of assigned items
+        else: # cluster found
+            if 0 == lass.add_to_cluster(iclclose, i, ldata): # populate the cluster
+                nass += 1 # increase number of assigned items
+    print('- ',nass,'of',ndat,' items assigned to ',len(lass.lcluster),' clusters')
+    return lass
