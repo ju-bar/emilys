@@ -2,6 +2,15 @@
 """
 Created on Fri Jun 28 08:42:00 2019
 @author: ju-bar
+
+Calculations and data handling related to the Modulation Transfer Function (MTF)
+pixelated imaging detectors.
+
+
+This code is part of the 'emilys' repository
+https://github.com/ju-bar/emilys
+published under the GNU General Publishing License, version 3
+
 """
 # %%
 from numba import jit # include compilation support

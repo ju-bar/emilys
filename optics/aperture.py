@@ -2,7 +2,13 @@
 """
 Created on Sun Jun 16 12:04:00 2019
 @author: ju-bar
+
 Calculation of 2-dimensional apertures
+
+This code is part of the 'emilys' repository
+https://github.com/ju-bar/emilys
+published under the GNU General Publishing License, version 3
+
 """
 # %%
 from numba import jit # include compilation support

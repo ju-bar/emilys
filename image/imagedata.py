@@ -2,6 +2,13 @@
 """
 Created on Sun Jul 1 15:42:00 2019
 @author: ju-bar
+
+Image data access tools
+
+This code is part of the 'emilys' repository
+https://github.com/ju-bar/emilys
+published under the GNU General Publishing License, version 3
+
 """
 # %%
 from numba import jit # include compilation support

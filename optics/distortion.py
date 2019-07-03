@@ -2,7 +2,13 @@
 """
 Created on Wed Jul 03 10:14:00 2019
 @author: ju-bar
-Functions handling geometric distortions in 2D
+
+Functions and classes handling geometric distortions in 2D
+
+This code is part of the 'emilys' repository
+https://github.com/ju-bar/emilys
+published under the GNU General Publishing License, version 3
+
 """
 # %%
 from numba import jit # include compilation support

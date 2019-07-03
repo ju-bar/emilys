@@ -2,6 +2,13 @@
 """
 Created on Thu Jun 27 14:42:00 2019
 @author: ju-bar
+
+Array data plotting wrapper
+
+This code is part of the 'emilys' repository
+https://github.com/ju-bar/emilys
+published under the GNU General Publishing License, version 3
+
 """
 # %%
 import matplotlib.pyplot as plt # include mathematic plotting

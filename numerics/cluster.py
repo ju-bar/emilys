@@ -2,6 +2,13 @@
 """
 Created on Sun Jul 1 17:15:00 2019
 @author: ju-bar
+
+Cluster recognition tools
+
+This code is part of the 'emilys' repository
+https://github.com/ju-bar/emilys
+published under the GNU General Publishing License, version 3
+
 """
 import numpy as np
 # %%
@@ -29,8 +36,8 @@ class cluster:
 
     def update_stats(self, ldata):
         val0 = ldata[0] * 0.
-        mean = val0
-        sdev = val0
+        self.mean = val0
+        self.sdev = val0
         tmpsum = val0
         tmpsqrs = val0
         npop = len(self.population)
