@@ -9,7 +9,7 @@ import numpy as np # include numeric functions
 import emilys.image.imagedata as img # include image data routines
 # %%
 @jit
-def mc_image_pos_maximize(image, lpoints, rstep=1., etmp=0., itmax=100, err=0):
+def mc_image_pos_maximize(image, lpoints, rstep=1., etmp=0., itmax=100):
     '''
 
     Maximizes the intensity given by image for points in lpoints by
@@ -17,21 +17,18 @@ def mc_image_pos_maximize(image, lpoints, rstep=1., etmp=0., itmax=100, err=0):
 
     Returns:
         >0 = number of iterations performed.
-        err = error code
+        <0 = error code
         lpoints = points close to maximum positions
 
     '''
     dimg = image.shape
     dpts = lpoints.shape
     if len(dimg) != 2:
-        err = 10
-        return 0
+        return -10
     if len(dpts) != 2:
-        err = 11
-        return 0
+        return -11
     if dpts[1] != 2:
-        err = 12
-        return 0
+        return -12
     npts = dpts[0]
     e0 = img.image_pos_sum(image, lpoints)
     et = e0

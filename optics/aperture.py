@@ -2,6 +2,7 @@
 """
 Created on Sun Jun 16 12:04:00 2019
 @author: ju-bar
+Calculation of 2-dimensional apertures
 """
 # %%
 from numba import jit # include compilation support

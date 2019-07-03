@@ -130,35 +130,41 @@ class cluster_assignment:
                 self.add_cluster(cl_source)
         return lconfl
 # %%
-def cluster_l2(ldata, l2_thresh=1., err=0):
+def cluster_l2(ldata, l2_thresh=1.):
     '''
 
-    Returns a list of clusters found in ldata with the l2-norm
+    Creates a list of clusters found in ldata with the l2-norm
     of cluster members better than l2_thresh with respect
-    to the cluster mean
+    to the cluster mean.
 
-    clusters are returned as list of values
-        [mean,sdev,population]
-        mean : array_like as items of ldata
-            mean value of the cluster
-        sdev : array_like as items of ldata
-            standard deviation of the cluster
-        population : array
-            list of indices referencing to items of ldata in the cluster
+    Parameters:
+        ldata : numpy.ndarray, shape(N,2)
+            list of 2d point coordinates
+        l2_thresh: float
+            clustering threshold, must be > 0!
 
-    err = error code
+    Return:
+
+        clusters are returned as list of values
+            [mean,sdev,population]
+            mean : array_like as items of ldata
+                mean value of the cluster
+            sdev : array_like as items of ldata
+                standard deviation of the cluster
+            population : array
+                list of indices referencing to items of ldata in the cluster
+        
+        An empty list is returned in case of invalid parameters.
 
     '''
     nd = ldata.shape
     if len(nd) != 2:
-        err = 10
-        return
+        return []
     ndat = nd[0]
     ndim = nd[1]
     lthr = np.abs(l2_thresh)
     if lthr == 0.:
-        err = 11
-        return
+        return []
     lass = cluster_assignment(ndat)
     nass = 0 # initialize number of assigned values
     for i in range(0, ndat): # loop over all items
