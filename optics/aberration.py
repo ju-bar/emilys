@@ -159,7 +159,7 @@ class aberr_axial_func:
                 coordinate
             lcoeff : array_like, complex, shape = (self.num_coeff(),) or shorter
                 aberration coefficients
-            luseterm : array_like, int, shape = (self.num_terms(),) or shorter
+            luse : array_like, int, shape = (self.num_terms(),) or shorter
                 aberration term flags
 
         Return:
@@ -188,6 +188,61 @@ class aberr_axial_func:
             reschi = reschi + term # add term to result
         return reschi
 
+    #@jit
+    def chi_list(self, lx, lcoeff = None, luse = None):
+        '''
+        Calculates the aberration function polynomial chi for a list
+        of coordinates lx.
+        If non-empty lists are provided by parameters 'lcoeff' and 'luse',
+        respective internal lists of coefficients and use flags will be set
+        from input. Empty lists are default.
+        
+        You may preset the coefficients by self.lcoeff = [ complex values ]
+        and the use flags by self.luse_term = [ integer flags ].
+
+        Parameters:
+            lx : array_like, complex
+                list of coordinate
+            lcoeff : array_like, complex, shape = (self.num_coeff(),) or shorter
+                aberration coefficients
+            luse : array_like, int, shape = (self.num_terms(),) or shorter
+                aberration term flags
+
+        Return:
+            np.array, size = size(lx), float
+
+        '''
+        nx = np.size(lx)
+        if nx == 0:
+            return np.array([], dtype=float)
+        lc = np.zeros(nx, dtype=float)
+        rchi = 0.
+        nol = self.__max_order + 1
+        if lcoeff != None: self.lcoeff = lcoeff
+        if luse != None: self.luse_term = luse
+        xfn = np.full(nol, 1., dtype=complex)
+        #
+        # loop over coordinates
+        for i in range(0, nx):
+            x = lx[i]
+            px = 1.
+            for j in range(1, nol):
+                px *= x
+                xfn[j] = px
+            xfc = xfn.conjugate()
+            for k in range(0, self.num_terms): # loop over aberration terms
+                if 0 == self.__luse_term[k]:
+                    continue # skip term
+                # adding term (m,n)
+                m1, n = self.term_of_idx(k)
+                m = m1 + 1
+                j = int((m + n) / 2)
+                l = int((m - n) / 2)
+                term = np.real( self.__lcoeff[k] * xfn[l] * xfc[j] ) / m
+                rchi = rchi + term # add term to result
+            lc[i] = rchi
+        return lc
+
     def grad_chi(self, x, lcoeff = None, luse = None):
         '''
         Calculates the gradient of aberration function polynomial chi
@@ -204,11 +259,11 @@ class aberr_axial_func:
                 coordinate
             lcoeff : array_like, complex, shape = (self.num_coeff(),) or shorter
                 aberration coefficients
-            luseterm : array_like, int, shape = (self.num_terms(),) or shorter
+            luse : array_like, int, shape = (self.num_terms(),) or shorter
                 aberration term flags
 
         Return:
-            float
+            complex
 
         '''
         gradchi = 0. + 0.j
@@ -237,3 +292,65 @@ class aberr_axial_func:
             term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
             gradchi = gradchi + term / m2 # add term to result
         return gradchi
+
+    #@jit
+    def grad_chi_list(self, lx, lcoeff = None, luse = None):
+        '''
+        Calculates the gradient of aberration function polynomial chi
+        in complex number notation for a list of coordinates lx.
+        If non-empty lists are provided by parameters 'lcoeff' and 'luse',
+        respective internal lists of coefficients and use flags will be set
+        from input. Empty lists are default.
+
+        You may preset the coefficients by self.lcoeff = [ complex values ]
+        and the use flags by self.luse_term = [ integer flags ].
+        
+        Parameters:
+            lx : array_like, complex
+                coordinates
+            lcoeff : array_like, complex, shape = (self.num_coeff(),) or shorter
+                aberration coefficients
+            luse : array_like, int, shape = (self.num_terms(),) or shorter
+                aberration term flags
+
+        Return:
+            np.array, size=size(lx), complex
+
+        '''
+        nx = np.size(lx)
+        if nx == 0:
+            return np.array([], dtype=complex)
+        lg = np.zeros(nx, dtype=complex)
+        gradchi = 0. + 0.j
+        nol = self.__max_order + 2
+        if lcoeff != None: self.lcoeff = lcoeff
+        if luse != None: self.luse_term = luse
+        # initialize complex powers [0., 1., x, x^2, x^3, ...]
+        xfn = np.zeros(nol, dtype=complex)
+        xfn[1] = 1.
+        #
+        # loop over list
+        for i in range(0, nx):
+            x = lx[i] # get current coordinate
+            # prepare powers of x
+            px = 1.
+            for j in range(2, nol):
+                px *= x
+                xfn[j] = px
+            xfc = xfn.conjugate() # conjugates of the power list
+            gradchi = 0. + 0.j # reset current result
+            for k in range(0, self.num_terms): # loop over aberration terms
+                if 0 == self.__luse_term[k]:
+                    continue # skip term
+                # adding term (m,n)
+                m1, n = self.term_of_idx(k)
+                m = m1 + 1
+                m2 = 2*m
+                j = int((m + n) / 2)
+                l = int((m - n) / 2)
+                # remember: index 0 -> 0, 1 -> x^0, 2 -> x^1, 3 -> x^2 ...
+                #   therefore l -> l+1, j -> j+1 compared to the series in method chi(...)
+                term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
+                gradchi = gradchi + term / m2 # add term to result
+            lg[i] = gradchi
+        return lg
