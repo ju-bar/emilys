@@ -43,6 +43,6 @@ def arrayplot2d(array, pixscale=1, colscale='gray', dpi=72, vrange=np.array([0.,
     ax.axis('off')
     rmin, rmax, arrshow = get_value_range(array, vrange, vrangetype)
     ax.imshow(arrshow, cmap = colscale, origin = 'lower', vmin = rmin, vmax = rmax)
-    return fig
+    return [fig,ax]
 
 #%%

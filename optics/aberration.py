@@ -12,7 +12,6 @@ published under the GNU General Publishing License, version 3
 """
 from numba import jit # include compilation support
 import numpy as np
-import scipy.special
 
 class aberr_axial_func:
     '''
@@ -25,6 +24,12 @@ class aberr_axial_func:
     polynomial. The lowest order is 0 and refers to a shift. Spherical
     aberration C_3,0 is of 3rd order.
 
+    General form of the aberration function:
+
+    Re[ sum_l=1,N sum_k=0,min(l,N-l) C_l+k-1,l-k * w^k * conjugate(w)^l / (l+k) ],
+    with 2d coordinates w = w_x + w_y*j and coefficients C_m-1,n = C_m-1,n,x + C_m-1,n,y*j
+    expressed by complex numbers.
+
     '''
     #
     # Coding comment:
@@ -36,133 +41,123 @@ class aberr_axial_func:
         self.__max_order = max(1, int(max_order)+1) # at least an image shift should be present
         # number of aberration terms
         self.__num_terms = (int)((4 * self.__max_order - self.__max_order % 2 + self.__max_order * self.__max_order) / 4)
-        # number of aberration coefficients (2 x terms)
-        self.__num_coeff = 2 * self.__num_terms
         # number of indices for partial term orders, must support 0 and max(m) + max(n) = 2 * max(m)
-        self.__num_termorders = 1 + 2 * self.__max_order
-        # local copy of the last coefficient list
-        self.__lcoeff = np.zeros(self.__num_coeff) # preset to 0
-        # aberration coefficient list (internal sequence -> (m,n) )
-        self.__lterms_idx = np.zeros((self.__num_terms,2), dtype=int) # preset to 0
-        # aberration index list ( (m,n) -> internal sequence)
-        self.__lidx_terms = np.zeros((self.__max_order+1,self.__max_order+1), dtype=int) # preset to 0
+        self.__lcoeff = np.zeros(self.__num_terms, dtype=complex) # preset to 0
         # aberration term flags
         self.__luse_term = np.full(self.__num_terms, 1, dtype=int) # preset to 1
-        # binomial factors (n over k)
-        self.__lbinom = np.zeros((self.__num_termorders,self.__num_termorders), dtype=int) # preset to 0
-        # coefficient sign list
-        self.__lcsgn = np.array([1.,0.,-1.,0.]) #  static list
-        # set binomial factors
-        for n in range(0, self.__num_termorders):
-            for k in range(0, self.__num_termorders):
-                self.__lbinom[n,k] = scipy.special.comb(n,k,exact=True)
+        # aberration coefficient list (internal sequence -> (m,n) )
+        self.__lterm_of_idx = np.zeros((self.__num_terms,2), dtype=int) # preset to 0
+        # aberration index list ( (m,n) -> internal sequence)
+        self.__lidx_of_term = np.zeros((self.__max_order+1,self.__max_order+1), dtype=int) # preset to 0
         # set index list
         l = 0
         for m in range(1, self.__max_order+1):
             for n in range(0, m + 1):
                 if 0 == (m+n)%2: # valid orders have even sums of m and n
-                    self.__lterms_idx[l,0] = m
-                    self.__lterms_idx[l,1] = n
-                    self.__lidx_terms[m,n] = l
+                    self.__lterm_of_idx[l,0] = m
+                    self.__lterm_of_idx[l,1] = n
+                    self.__lidx_of_term[m,n] = l
                     l = l + 1
 
+    @property
     def max_order(self):
         '''
         Maximum order of the aberation function polynomial.
         '''
         return self.__max_order
 
+    @property
     def num_terms(self):
         '''
         Number of aberration terms.
         '''
         return self.__num_terms
 
-    def num_coeff(self):
-        '''
-        Number of aberration coeffcients.
-        '''
-        return self.__num_coeff
-
     def idx_of_term(self, m, n):
         '''
         List index of the term with polynomial order (m+1) and rotational symmetry n.
         '''
         im = m+1
-        if 0 == (im+n)%2 and im <= self.__max_order and n <= im:
-            return self.__lidx_terms[im, n]
+        if 0 == (im+n)%2 and im <= self.max_order and n <= im:
+            return self.__lidx_of_term[im, n]
         return -1 # not a listed term
 
     def term_of_idx(self, idx):
         '''
         Term order m and rotational symmetry for list index idx returned as tuple (m,n).
         '''
-        if idx >= 0 and idx < self.__num_terms:
-            return self.__lterms_idx[idx] - [1,0]
+        if idx >= 0 and idx < self.num_terms:
+            return self.__lterm_of_idx[idx] - [1,0]
         return [0,0] # not a listed term
 
-    def binom(self, n, k):
-        return self.__lbinom[n,k]
+    @property
+    def lcoeff(self):
+        '''
+        Returns a copy of the internal coefficient list.
+        '''
+        return self.__lcoeff.copy()
 
-    def get_lcoeff(self):
-        '''
-        Returns the internal coefficient list.
-        '''
-        return self.__lcoeff
-
-    def get_luse_term(self):
-        '''
-        Returns the internal list of term usage flags.
-        '''
-        return self.__luse_term
-
-    def set_lcoeff(self, lcoeff):
+    @lcoeff.setter
+    def lcoeff(self, lc):
         '''
         Set internal coefficient list.
 
         Parameters:
-            lcoeff : array_like, float, shape = (self.num_coeff(),) or shorter
+            lcoeff : array_like, complex, shape = (self.num_terms,) or shorter
                 aberration coefficients
 
         Return:
             integer, number of coefficients set
         '''
-        ncf = min(np.size(lcoeff), self.__num_coeff)
+        lcoeff = np.atleast_1d(lc)
+        assert lcoeff.dtype == complex, 'lcoeff has to be of complex numbers!'
+        ncf = min(np.size(lcoeff), self.num_terms)
         if ncf > 0:
             self.__lcoeff[0:ncf] = lcoeff[0:ncf]
-        return ncf
+        #return ncf
 
-    def set_luse_term(self, luseterm):
+
+    @property
+    def luse_term(self):
+        '''
+        Returns a copy of the internal list of term usage flags.
+        '''
+        return self.__luse_term.copy()
+
+    @luse_term.setter
+    def luse_term(self, luse):
         '''
         Set internal coefficient list.
 
         Parameters:
-            luseterm : array_like, int, shape = (self.num_terms(),) or shorter
+            luseterm : array_like, int, shape = (self.num_terms,) or shorter
                 aberration term flags
 
         Return:
             integer, number of coefficient usage flags set
         '''
-        nuse = min(np.size(luseterm), self.__num_terms)
+        luse2 = np.atleast_1d(luse)
+        assert luse2.dtype == int, 'luse has to be of int numbers!'
+        nuse = min(np.size(luse2), self.num_terms)
         if nuse > 0:
-            self.__luse_term[0:nuse] = luseterm[0:nuse]
-        return nuse
+            self.__luse_term[0:nuse] = luse2[0:nuse]
+        #return nuse
     
-    def chi(self, x_tuple, lcoeff = np.array([]), luseterm = np.array([])):
+    
+    def chi(self, x, lcoeff = None, luse = None):
         '''
         Calculates the aberration function polynomial chi.
-        If non-empty lists are provided by parameters 'lcoeff' and 'luseterm',
-        respective internal lists will be set from input.
-        Empty lists are default.
+        If non-empty lists are provided by parameters 'lcoeff' and 'luse',
+        respective internal lists of coefficients and use flags will be set
+        from input. Empty lists are default.
         
-        You may also use methods set_lcoeff(...) and set_luse_term(...) to
-        preset the internal arrays, do this with an initial call of chi, or
-        with each call of chi.
+        You may preset the coefficients by self.lcoeff = [ complex values ]
+        and the use flags by self.luse_term = [ integer flags ].
 
         Parameters:
-            x_typle : array_like, float, shape = (2,)
+            x : complex
                 coordinate
-            lcoeff : array_like, float, shape = (self.num_coeff(),) or shorter
+            lcoeff : array_like, complex, shape = (self.num_coeff(),) or shorter
                 aberration coefficients
             luseterm : array_like, int, shape = (self.num_terms(),) or shorter
                 aberration term flags
@@ -171,42 +166,74 @@ class aberr_axial_func:
             float
 
         '''
-        nol = self.__max_order + 1
-        wx = x_tuple[0]
-        wy = x_tuple[1]
-        self.set_lcoeff(lcoeff)
-        self.set_luse_term(luseterm)
-        w = np.sqrt(wx*wx + wy*wy)
-        pwx = 1.
-        pwy = 1.
-        pw = 1.
         reschi = 0.
-        wfield = np.full((nol, 3), 1., dtype=float)
+        nol = self.__max_order + 1
+        if lcoeff != None: self.lcoeff = lcoeff
+        if luse != None: self.luse_term = luse
+        px = 1.
+        xfn = np.full(nol, 1., dtype=complex)
         for i in range(1, nol):
-            pwx *= wx
-            pwy *= wy
-            pw *= w
-            wfield[i,0] = pwx
-            wfield[i,1] = pwy
-            wfield[i,2] = pw
-        for k in range(0, self.__num_terms): # loop over aberration terms
-            if 0 == self.__luse_term[k]: continue # skip term
+            px *= x
+            xfn[i] = px
+        xfc = xfn.conjugate()
+        for k in range(0, self.num_terms): # loop over aberration terms
+            if 0 == self.__luse_term[k]:
+                continue # skip term
             # adding term (m,n)
-            m = self.__lterms_idx[k, 0]
-            n = self.__lterms_idx[k, 1]
-            term = 0.
-            for l in range(0, n + 1): # loop l from 0 to n inclusive
-                coef = 0.
-                tsgn = self.__lcsgn[l%4] # get sign factor for x component of the aberration
-                coef = coef + tsgn * self.__lcoeff[2 * k] # access aberration x-coefficient and apply sign
-                tsgn = self.__lcsgn[(l+3)%4] # get sign factor for y component of the aberration
-                coef = coef + tsgn * self.__lcoeff[1 + 2 * k] # access aberration y-coefficient and apply sign
-                j = n - l # get term order
-                #   ++ (sgn*ax + sgn*ay) * binom(n over l) * wx**j      * wy**l
-                term = term + coef * self.__lbinom[n, l] * wfield[j,0] * wfield[l,1]
-            j = m - n # round pre-factor power
-            term = term * wfield[j,2] / m # multiply round pre-factor
+            m1, n = self.term_of_idx(k)
+            m = m1 + 1
+            j = int((m + n) / 2)
+            l = int((m - n) / 2)
+            term = np.real( self.__lcoeff[k] * xfn[l] * xfc[j] ) / m
             reschi = reschi + term # add term to result
         return reschi
 
-    # def grad_chi !
+    def grad_chi(self, x, lcoeff = None, luse = None):
+        '''
+        Calculates the gradient of aberration function polynomial chi
+        in complex number notation.
+        If non-empty lists are provided by parameters 'lcoeff' and 'luse',
+        respective internal lists of coefficients and use flags will be set
+        from input. Empty lists are default.
+
+        You may preset the coefficients by self.lcoeff = [ complex values ]
+        and the use flags by self.luse_term = [ integer flags ].
+        
+        Parameters:
+            x : complex
+                coordinate
+            lcoeff : array_like, complex, shape = (self.num_coeff(),) or shorter
+                aberration coefficients
+            luseterm : array_like, int, shape = (self.num_terms(),) or shorter
+                aberration term flags
+
+        Return:
+            float
+
+        '''
+        gradchi = 0. + 0.j
+        nol = self.__max_order + 2
+        if lcoeff != None: self.lcoeff = lcoeff
+        if luse != None: self.luse_term = luse
+        px = 1.
+        # initialize complex powers [0., 1., x, x^2, x^3, ...]
+        xfn = np.zeros(nol, dtype=complex)
+        xfn[1] = 1.
+        for i in range(2, nol):
+            px *= x
+            xfn[i] = px
+        xfc = xfn.conjugate() # conjugates of the power list
+        for k in range(0, self.num_terms): # loop over aberration terms
+            if 0 == self.__luse_term[k]:
+                continue # skip term
+            # adding term (m,n)
+            m1, n = self.term_of_idx(k)
+            m = m1 + 1
+            m2 = 2*m
+            j = int((m + n) / 2)
+            l = int((m - n) / 2)
+            # remember: index 0 -> 0, 1 -> x^0, 2 -> x^1, 3 -> x^2 ...
+            #   therefore l -> l+1, j -> j+1 compared to the series in method chi(...)
+            term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
+            gradchi = gradchi + term / m2 # add term to result
+        return gradchi
