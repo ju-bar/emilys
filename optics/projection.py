@@ -373,39 +373,120 @@ class projection_func_2d:
             ldy[i] = np.dot(fpt.T, self.__lcoeff) # (2,m).(m,2) -> (2,2): [[dyi0/dx0,dyi1/dx0],[dyi0/dx1,dyi1/dx1]]
         return ldy
 
-    # define a square deviation function to minimize deviations between measured and
+    # --------------------- #
+    #                       #
+    # least squares methods #
+    #                       #
+    # --------------------- #
+
+    # [x0, lcoeff[1:]] -> prm
+    def __getprm_fitx0(self, x0, lcoeff):
+        '''
+        Return a parameter array for the fitx0 method.
+        
+        Parameters:
+            x0 : numpy.ndarray, shape (2,)
+            lcoeff: numpy.ndarray, shape (self.num_terms,2)
+        
+        Return:
+            numpy.ndarray, shape (n,)
+        '''
+        # all inputs are expected as numpy.ndarray
+        luse = self.__luse_term.copy()
+        nprm = int(2 * (1 + np.sum(luse[1:])))
+        lprm = np.zeros(nprm, dtype=float)
+        if np.size(x0) > 1:
+            lprm[0:2] = x0[0:2]
+        l = 1
+        for i in range(1,self.num_terms):
+            if luse[i] == 1:
+                lprm[2*l:2*l+2] = lcoeff[i,0:2]
+                l = l + 1
+        return lprm
+
+    # prm -> [x0, lcoeff[1:]]
+    def __getcoeff_fitx0(self, lprm):
+        '''
+        Returs x0 and an lcoeff array for the fitx0 method.
+        
+        Parameters:
+            lprm: numpy.ndarray shape(n,)
+            luse: numpy.ndarray shape(self.num_terms,)
+        
+        Return:
+            [ numpy.ndarray shape(2,) , numpy.ndarray shape(self.num_terms,2)
+        '''
+        luse = self.__luse_term.copy()
+        x0 = lprm[0:2]
+        lcoeff = np.zeros((self.num_terms, 2))
+        l = 1
+        for i in range(1,self.num_terms):
+            if luse[i] == 1:
+                lcoeff[i] = lprm[2*l:2*l+2]
+                l = l + 1
+        return [x0, lcoeff]
+
+    def __getderiv_fitx0(self, ldx0, ldcoeff):
+        '''
+        Returns a parameter derivative array for the fitx0 method.
+        
+        Parameters:
+            ldx0 : numpy.ndarray, shape (m,2,2)
+            ldcoeff: numpy.ndarray, shape (m,self.num_terms,2,2)
+        
+        Return:
+            numpy.ndarray, shape (m,n/2,2,2), n = total number of parameters
+        '''
+        luse = self.__luse_term.copy()
+        nh = int(1 + np.sum(luse[1:]))
+        m = ldx0.shape[0]
+        ldprm = np.zeros((m,nh,2,2), dtype=float)
+        ldprm[:,0:1,:,:] = ldx0.reshape(m,1,2,2)
+        l = 1
+        for i in range(1, self.num_terms):
+            if luse[i] == 1:
+                ldprm[:,l,:,:] = ldcoeff[:,i,:,:]
+                l = l + 1
+        return ldprm
+
+
+    # define a function calculating squared differences between measured and
     # modelled peak positions using the 2d projection function
-    # prm = [k0, dfobj.lcoeff]
+    # prm = [x0, dfobj.lcoeff[1:]]
     def __sdevproj_x0(self,x): # assumes shape(x) = (n,)
-        lc = np.zeros(self.num_terms*2)
-        lc[2:] = x[2:] # copy input
+        x0, lc = self.__getcoeff_fitx0(x)
+        #lc[2:] = x[2:] # copy input
         self.lcoeff = lc # set input
-        lx = self.__xdata_fitx0 + x[0:2] # (m,2)
+        lx = self.__xdata_fitx0 + x0 # x[0:2] # (m,2)
         lwf = self.__wdata_fitx0.flatten() # (2*m)
         dpmf = (self.project(lx) - self.__ydata_fitx0).flatten() # (2*m,) [dy10,dy11,dy20,dy21,...,dyn0,dyn1]
         return np.dot(dpmf, dpmf * lwf) / np.sum(lwf) # sum_i=1,m[ sum_a=0,1[ dyia**2 * wi ] ] / sum(wi)
     # ... and define a Jacobian
     def __dsdevproj_x0(self,x): # assumes shape(x) = (n,)
-        lc = np.zeros(self.num_terms*2)
-        lc[2:] = x[2:] # copy input
+        x0, lc = self.__getcoeff_fitx0(x)
+        #lc = np.zeros(self.num_terms*2)
+        #lc[2:] = x[2:] # copy input
         self.lcoeff = lc # set input
-        lx = self.__xdata_fitx0 + x[0:2] # (m,2)
+        lx = self.__xdata_fitx0 + x0 # x[0:2] # (m,2)
         lwf = self.__wdata_fitx0.flatten() # (2*m)
         dpm = (self.project(lx) - self.__ydata_fitx0) # (m,2) : [[dy10,dy11],[dy20,dy21],...,[dym0,dym1]
         dx0 = self.project_deriv_x(lx) # (m,2,2) : [...,[[ddyi0/dk00, ddyi1/dk00], [ddyi0/dk01 + ddyi1/dk01],...]
-        sdx0 = dx0.shape
-        dx0s = np.reshape(dx0,(sdx0[0],1,sdx0[1],sdx0[2])) # (m,1,2,2)
+        #sdx0 = dx0.shape
+        #dx0s = np.reshape(dx0,(sdx0[0],1,sdx0[1],sdx0[2])) # (m,1,2,2)
         dcoeff = self.project_deriv_lcoeff(lx) # (m,n/2,2,2) : [...,[[ddyi0/daj0,ddyi1/daj0],[ddyi0/daj1,ddyi1/daj1]],...]
-        dp = dcoeff # (m,n/2,2,2)
-        sdp = dp.shape
-        dp[:,0,:,:] = dx0s[:,0,:,:] # (m,n/2,2,2) (replace y shift derivatives by x shift dervatives)
+        #dp = dcoeff # (m,n/2,2,2)
+        #sdp = dp.shape
+        #dp[:,0,:,:] = dx0s[:,0,:,:] # (m,n/2,2,2) (replace y shift derivatives by x shift dervatives)
         # ... combine dp and dpm to # (n/2,2) : [...,sum_i[dyi0*ddyi0/daj0 + dyi1*ddyi1/daj0, dyi0*ddyi0/daj1 + dyi1*ddyi1/daj1],...]
+        dp = self.__getderiv_fitx0(dx0, dcoeff)
+        sdp = dp.shape # (m,n/2,2,2)
         # The common dimensions are m = number of samples and 2, number space dimensions.
         dps = np.transpose(dp,(1,3,0,2)).reshape(sdp[1],sdp[3],sdp[0]*sdp[2]) # (n/2,2,2*m)
         ds2 = 2. * np.dot(dps, dpm.flatten() * lwf).flatten() / np.sum(lwf) # (n,) 
         return ds2
 
-    def fit_x0_lcoeff(self, xdata, ydata, ysigm=np.array([]), x0=np.array([]), lcoeff0=np.array([]), luse=np.array([])):
+
+    def fit_x0_lcoeff(self, xdata, ydata, ysigm=np.array([]), x0=np.array([0.,0.]), lcoeff0=np.array([]), luse=np.array([])):
         '''
         Fits the projection to a set of data including an x0 shift
         instead of the shift coefficients (order 0) using a minimum
@@ -424,7 +505,17 @@ class projection_func_2d:
                 sequence of projection coefficient interpreted as tuples {[alk0,alk1]}
                 initializes to the internal coefficient list of the object if not given
             luse : array_like, int, optional
-                polynomial term flags 
+                polynomial term flags
+
+        Return:
+            [prm, cov, msd]
+            prm : numpy.ndarray shape(num_terms * 2)
+                fitted parameters with (y) shift coefficient at index 0 replaced by the x0 shift
+                sorted [x00,x01, ... , alk0, alk1, ...]
+            cov : numpy.ndarray shape(num_terms * 2, num_terms * 2)
+                covariance matrix, entries are sorted as is prm
+            msd : float
+                mean square deviation between data and model per data item
 
         '''
         #
@@ -434,17 +525,18 @@ class projection_func_2d:
         if np.size(luse) > 0: self.luse = luse
         self.set_coeff_idx(0, 0., 0.) # no shift
         self.set_use_idx(0, 0) # no shift
-        n = self.num_terms
-        prm0 = np.zeros(2*n, dtype=float)
-        if np.size(x0)>=2: prm0[0:2] = x0[0:2]
-        prm0[2:n] = self.lcoeff.flatten()[2:n] # copy initial parameters (except shift)
+        # n = self.num_terms
+        # prm0 = np.zeros(2*n, dtype=float)
+        # if np.size(x0)>=2: prm0[0:2] = x0[0:2]
+        # prm0[2:n] = self.lcoeff.flatten()[2:n] # copy initial parameters (except shift)
+        prm0 = self.__getprm_fitx0(x0, self.lcoeff)
         # data
         m2 = min(np.size(xdata),np.size(ydata))
         m = int((m2 - m2%2) / 2) # number of data tuples
-        # store data lists as class member
-        self.__xdata_fitx0 = np.array(xdata).flatten()[0:2*m].reshape(m,2)
-        self.__ydata_fitx0 = np.array(ydata).flatten()[0:2*m].reshape(m,2)
-        self.__wdata_fitx0 = np.full((m,2), 1.)
+        # store data lists as class members
+        self.__xdata_fitx0 = np.array(xdata).flatten()[0:2*m].reshape(m,2) # x
+        self.__ydata_fitx0 = np.array(ydata).flatten()[0:2*m].reshape(m,2) # y
+        self.__wdata_fitx0 = np.full((m,2), 1.) # weights
         # setup weights from y error estimates
         if np.size(ysigm) >= m2:
             ys = np.array(np.abs(ysigm)).flatten()[0:2*m].reshape(m,2)
@@ -459,13 +551,30 @@ class projection_func_2d:
                         self.__wdata_fitx0[i,0] = wmax
                     if ys[i,1] == 0.:
                         self.__wdata_fitx0[i,1] = wmax
-        # minimize square deviations
+        # minimize weighted square deviations
         nmsol = minimize(self.__sdevproj_x0, prm0, method='BFGS', jac=self.__dsdevproj_x0)
         prmf = nmsol.x
-        prmcov = nmsol.hess_inv
+        prmcov = nmsol.hess_inv / np.sum(self.__wdata_fitx0.flatten())
         sqrdev = self.__sdevproj_x0(prmf)
+        # resort result vectors for output
+        prml = np.zeros(2 * self.num_terms)
+        covl = np.zeros((2 * self.num_terms, 2 * self.num_terms))
+        lj = 0
+        for j in range(0, self.num_terms): # covl and prml rows
+            if j > 0 and self.luse[j] == 0: continue # skip unused coefficient
+            j2 = 2 * j
+            lj2 = 2 * lj
+            prml[j2:j2+2] = prmf[lj2:lj2+2] # copy prm
+            li = 0
+            for i in range(0, self.num_terms): # covl columns
+                if i > 0 and self.luse[i] == 0: continue # skip unused coefficient
+                i2 = 2 * i
+                li2 = 2 * li
+                covl[j2:j2+2,i2:i2+2] = prmcov[lj2:lj2+2,li2:li2+2] # copy cov
+                li = li + 1
+            lj = lj + 1
         # restore backup
         self.lcoeff = lcbk # coefficients
         self.luse = lubk # use flags
         # return fit result
-        return [prmf, prmcov, sqrdev]
+        return [prml, covl, sqrdev]
