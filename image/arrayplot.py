@@ -49,16 +49,16 @@ def get_value_range(array, vrange=np.array([0.,1.]), vrangetype='default'):
     '''
     vmin = np.amin(array)
     vmax = np.amax(array)
-    rmin = vmin * (1. - vrange[0])
-    rmax = vmax * vrange[1]
+    rmin = vmin + vrange[0] * (vmax - vmin)
+    rmax = vmin + vrange[1] * (vmax - vmin)
     arrshow = array
     if vrangetype == 'zerosym': # set value range symmetric around zero
         if vmax < 0:
             vmax = np.abs(vmin)
         else:
             vmin = -vmax
-        rmin = vmin * (1. - vrange[0])
-        rmax = vmax * vrange[1]
+        rmin = vmin + vrange[0] * (vmax - vmin)
+        rmax = vmin + vrange[1] * (vmax - vmin)
     elif vrangetype == 'direct': # set the value range directly from vrange
         rmin = vrange[0]
         rmax = vrange[1]
