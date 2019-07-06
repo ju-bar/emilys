@@ -39,19 +39,21 @@ class aberr_axial_func:
     def __init__(self, max_order):
         # maximum polynomial order of the phase terms (max(m) = max_order + 1)
         self.__max_order = max(1, int(max_order)+1) # at least an image shift should be present
+        no = self.__max_order
         # number of aberration terms
-        self.__num_terms = (int)((4 * self.__max_order - self.__max_order % 2 + self.__max_order * self.__max_order) / 4)
+        self.__num_terms = (int)((4 * no - no%2 + no**2) / 4)
+        nt = self.__num_terms
         # number of indices for partial term orders, must support 0 and max(m) + max(n) = 2 * max(m)
-        self.__lcoeff = np.zeros(self.__num_terms, dtype=complex) # preset to 0
+        self.__lcoeff = np.zeros(nt, dtype=complex) # preset to 0
         # aberration term flags
-        self.__luse_term = np.full(self.__num_terms, 1, dtype=int) # preset to 1
+        self.__luse_term = np.full(nt, 1, dtype=int) # preset to 1
         # aberration coefficient list (internal sequence -> (m,n) )
-        self.__lterm_of_idx = np.zeros((self.__num_terms,2), dtype=int) # preset to 0
+        self.__lterm_of_idx = np.zeros((nt, 2), dtype=int) # preset to 0
         # aberration index list ( (m,n) -> internal sequence)
-        self.__lidx_of_term = np.zeros((self.__max_order+1,self.__max_order+1), dtype=int) # preset to 0
+        self.__lidx_of_term = np.zeros((no + 1, no + 1), dtype=int) # preset to 0
         # set index list
         l = 0
-        for m in range(1, self.__max_order+1):
+        for m in range(1, no + 1):
             for n in range(0, m + 1):
                 if 0 == (m+n)%2: # valid orders have even sums of m and n
                     self.__lterm_of_idx[l,0] = m
@@ -75,7 +77,8 @@ class aberr_axial_func:
 
     def idx_of_term(self, m, n):
         '''
-        List index of the term with polynomial order (m+1) and rotational symmetry n.
+        List index of the term with polynomial order (m+1)
+        and rotational symmetry n.
         '''
         im = m+1
         if 0 == (im+n)%2 and im <= self.max_order and n <= im:
@@ -84,7 +87,8 @@ class aberr_axial_func:
 
     def term_of_idx(self, idx):
         '''
-        Term order m and rotational symmetry for list index idx returned as tuple (m,n).
+        Term order m and rotational symmetry for list index idx
+        returned as tuple (m,n).
         '''
         if idx >= 0 and idx < self.num_terms:
             return self.__lterm_of_idx[idx] - [1,0]
@@ -289,7 +293,8 @@ class aberr_axial_func:
             l = int((m - n) / 2)
             # remember: index 0 -> 0, 1 -> x^0, 2 -> x^1, 3 -> x^2 ...
             #   therefore l -> l+1, j -> j+1 compared to the series in method chi(...)
-            term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
+            term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j \
+                   + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
             gradchi = gradchi + term / m2 # add term to result
         return gradchi
 
@@ -350,7 +355,8 @@ class aberr_axial_func:
                 l = int((m - n) / 2)
                 # remember: index 0 -> 0, 1 -> x^0, 2 -> x^1, 3 -> x^2 ...
                 #   therefore l -> l+1, j -> j+1 compared to the series in method chi(...)
-                term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
+                term = self.__lcoeff[k] * xfn[l+1] * xfc[j] * j \
+                       + np.conjugate(self.__lcoeff[k]) * xfc[l] * xfn[j+1] * l
                 gradchi = gradchi + term / m2 # add term to result
             lg[i] = gradchi
         return lg

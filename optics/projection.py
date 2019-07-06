@@ -486,7 +486,9 @@ class projection_func_2d:
         return ds2
 
 
-    def fit_x0_lcoeff(self, xdata, ydata, ysigm=np.array([]), x0=np.array([0.,0.]), lcoeff0=np.array([]), luse=np.array([])):
+    def fit_x0_lcoeff(self, xdata, ydata, ysigm=np.array([]),
+                      x0=np.array([0.,0.]), lcoeff0=np.array([]),
+                      luse=np.array([])):
         '''
         Fits the projection to a set of data including an x0 shift
         instead of the shift coefficients (order 0) using a minimum

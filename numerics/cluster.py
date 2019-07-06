@@ -17,8 +17,8 @@ class cluster:
     
     class cluster
 
-    Handles the assignment of a list item to a cluster, tracking mean and standard deviation
-    of cluster members.
+    Handles the assignment of a list item to a cluster, 
+    tracking mean and standard deviation of cluster members.
 
     Members:
         mean : array_like
@@ -48,7 +48,8 @@ class cluster:
                 tmpsqrs = tmpsqrs + tmpval**2
             self.mean = tmpsum / npop
             if npop > 1:
-                self.sdev = np.sqrt( np.abs( tmpsqrs / npop - self.mean*self.mean ) ) * npop / (npop - 1)
+                self.sdev = np.sqrt(np.abs(tmpsqrs / npop - self.mean**2)) \
+                            * npop / (npop - 1)
 
     def add_member_index(self, ldata, index):
         self.population.append(index)
@@ -63,7 +64,8 @@ class cluster_assignment:
 
     Class cluster_assignment
 
-    Handles the cluster assignment and is returned from cluster finding algortithms.
+    Handles the cluster assignment and is returned from cluster
+    finding algortithms.
 
     Members:
         lassign : array, int
@@ -73,15 +75,20 @@ class cluster_assignment:
 
     '''
     def __init__(self, nitems):
-        '''Initialize a cluster_assignment object for a given number of data items.'''
+        '''
+        Initialize a cluster_assignment object for a given number of data items.
+        '''
         self.lassign = np.full(nitems, -1) # initialize forward list with no assignment
         self.lcluster = [] # initialize empty cluster list
 
     def add_to_cluster(self, idx_cluster, idx_item, ldata):
-        '''Adds a data item to an existing cluster.'''
+        '''
+        Adds a data item to an existing cluster.
+        '''
         ncl = len(self.lcluster)
         nitems = len(self.lassign)
-        if idx_cluster >= 0 and idx_cluster < ncl and idx_item >= 0 and idx_item < nitems:
+        if (idx_cluster >= 0 and idx_cluster < ncl and idx_item >= 0 \
+            and idx_item < nitems):
             if self.lassign[idx_item] < 0:
                 self.lcluster[idx_cluster].add_member_index(ldata, idx_item)
                 self.lassign[idx_item] = idx_cluster
@@ -90,7 +97,9 @@ class cluster_assignment:
         return 10 # error, invalid index
 
     def add_cluster(self, cluster):
-        '''Add a cluster, if no conflict is found. Returns list of conflicting items.'''
+        '''
+        Add a cluster, if no conflict is found. Returns list of conflicting items.
+        '''
         lconfl = [] # init list of assignment conflicts
         newpopnum = len(cluster.population)
         if newpopnum > 0:
@@ -120,10 +129,14 @@ class cluster_assignment:
                     self.lassign[i] -= 1 # decrement assignment to clusters following the deleted
 
     def merge_clusters(self, itarget, isource):
-        '''Merges cluster isource to cluster itarget and updates the assignments. Returns list of conflicting items.'''
+        '''
+        Merges cluster isource to cluster itarget and updates the assignments.
+        
+        Returns list of conflicting items.
+        '''
         ncl = len(self.lcluster)
         lconfl = []
-        if itarget >=0 and isource >= 0 and itarget < ncl and isource < ncl:
+        if (itarget >=0 and isource >= 0 and itarget < ncl and isource < ncl):
             cl_target = self.lcluster[itarget]
             cl_source = self.lcluster[isource]
             cl_merge = cl_target
@@ -193,5 +206,6 @@ def cluster_l2(ldata, l2_thresh=1.):
         else: # cluster found
             if 0 == lass.add_to_cluster(iclclose, i, ldata): # populate the cluster
                 nass += 1 # increase number of assigned items
-    print('- ',nass,'of',ndat,' items assigned to ',len(lass.lcluster),' clusters')
+    print('- ',nass,'of',ndat,' items assigned to ', \
+          len(lass.lcluster),' clusters')
     return lass

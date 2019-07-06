@@ -47,7 +47,8 @@ def image_at_bilin(image, pos):
     jl = np.mod(jl,dimg[0]) # y
     jh = np.mod(jh,dimg[0])
     # sum to bi-linear interpolation
-    v = image[jl,il] * (1-fj) * (1-fi) + image[jl,ih] * (1-fj) * fi + image[jh,il] * fj * (1-fi) + image[jh,ih] * fj * fi
+    v = image[jl,il] * (1-fj) * (1-fi) + image[jl,ih] * (1-fj) * fi \
+        + image[jh,il] * fj * (1-fi) + image[jh,ih] * fj * fi
     return v
 # %%
 def image_at(image, pos, ipol=1):
@@ -77,7 +78,9 @@ def image_at(image, pos, ipol=1):
     return ipol_switcher.get(ipol, image_at_bilin(image, pos))
 # %%
 @jit
-def image_resample(image, nout, p0in=np.array([0.,0.]), p0out=np.array([0.,0.]), sampling=np.array([[1.,0.],[0.,1.]]), ipol=1):
+def image_resample(image, nout, p0in=np.array([0.,0.]), 
+                   p0out=np.array([0.,0.]), 
+                   sampling=np.array([[1.,0.],[0.,1.]]), ipol=1):
     '''
 
     Resamples and image on a grid of new dimensions with given shift and sampling
@@ -92,7 +95,8 @@ def image_resample(image, nout, p0in=np.array([0.,0.]), p0out=np.array([0.,0.]),
         p0out : numpy.array, size=2
             reference position in output array (x,y)
         sampling : numpy.array, shape(2,2)
-            sampling matrix transforming a position in the output to a position in the input
+            sampling matrix transforming a position in the output to
+            a position in the input
         ipol : integer
             interpolation order
 
