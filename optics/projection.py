@@ -15,6 +15,7 @@ from numba import jit # include compilation support
 import numpy as np
 from scipy.special import comb
 from scipy.optimize import minimize
+from emilys.numerics.lstsq import linear_lstsq as llstsq
 
 class projection_func_2d:
     '''
@@ -384,6 +385,8 @@ class projection_func_2d:
         '''
         Return a parameter array for the fitx0 method.
         
+        This method is private and should only be called from fit_x0_lcoeff.
+
         Parameters:
             x0 : numpy.ndarray, shape (2,)
             lcoeff: numpy.ndarray, shape (self.num_terms,2)
@@ -408,6 +411,8 @@ class projection_func_2d:
     def __getcoeff_fitx0(self, lprm):
         '''
         Returs x0 and an lcoeff array for the fitx0 method.
+
+        This method is private and should only be called from fit_x0_lcoeff.
         
         Parameters:
             lprm: numpy.ndarray shape(n,)
@@ -429,6 +434,8 @@ class projection_func_2d:
     def __getderiv_fitx0(self, ldx0, ldcoeff):
         '''
         Returns a parameter derivative array for the fitx0 method.
+
+        This method is private and should only be called from fit_x0_lcoeff.
         
         Parameters:
             ldx0 : numpy.ndarray, shape (m,2,2)
@@ -556,7 +563,7 @@ class projection_func_2d:
         # minimize weighted square deviations
         nmsol = minimize(self.__sdevproj_x0, prm0, method='BFGS', jac=self.__dsdevproj_x0)
         prmf = nmsol.x
-        prmcov = nmsol.hess_inv / np.sum(self.__wdata_fitx0.flatten())
+        prmcov = nmsol.hess_inv / np.sum(self.__wdata_fitx0.flatten()) #  rethink this scaling
         sqrdev = self.__sdevproj_x0(prmf)
         # resort result vectors for output
         prml = np.zeros(2 * self.num_terms)
@@ -574,6 +581,157 @@ class projection_func_2d:
                 li2 = 2 * li
                 covl[j2:j2+2,i2:i2+2] = prmcov[lj2:lj2+2,li2:li2+2] # copy cov
                 li = li + 1
+            lj = lj + 1
+        # restore backup
+        self.lcoeff = lcbk # coefficients
+        self.luse = lubk # use flags
+        # return fit result
+        return [prml, covl, sqrdev]
+
+
+    # lcoeff[:] -> prm
+    def __getlcoeff_lstsq(self, lprm):
+        '''
+        Sort a parameter array obtained by linear least square parameter fit
+        with method fit_lcoeff to internal lcoeff order.
+
+        This method is private and should only be called from fit_lcoeff.
+        
+        Parameters:
+            lprm : numpy.ndarray (n,)
+                a list of coefficients as used by the least squares fitting
+        
+        Return:
+            numpy.ndarray, shape (self.num_terms,2)
+                a polynomial coefficient list ordered as the internal lcoeff member
+
+        '''
+        # all inputs are expected as numpy.ndarray
+        luse = self.__luse_term.copy()
+        lc = np.zeros(self.num_terms, 2)
+        l = 0
+        for i in range(0,self.num_terms):
+            if luse[i] == 1:
+                l2 = 2 * l
+                lc[i,0:2] = lprm[l2:l2+2]
+                l = l + 1
+        return lc
+
+    def __getmat_lstsq(self, xdata, weights=np.array([])):
+        '''
+        Calculates the derivatives of the polynomial with respect to the
+        polynomial coeffcients for given input data and sorts them
+        into a matrix for the linear least squares method.
+
+        This method is private and should only be called from fit_lcoeff.
+
+        Parameters:
+            xdata : numpy.ndarray shape(m,2)
+                list of x data tuples
+            weights : numpy.ndarray shape(m,2) optional
+                list of weights for each data row
+                if weights is not given, or not of the same shape as xdata,
+                the errors default to 1
+
+        Return:
+            numpy.ndarray shape(2*m, n)
+                matrix of the linear equation system to be solved
+        '''
+        # input is expected as numpy.ndarray
+        m = xdata.shape[0]
+        lw = np.full(2*m, 1., dtype=float)
+        if (xdata.shape == weights.shape):
+            lw = weights.flatten()
+        ldc = self.project_deriv_lcoeff(xdata) # (m,num_terms,2,2) coefficient derivatives at xdata
+        luse = self.luse
+        n = int(2 * np.sum(luse)) # number of coefficients
+        ldp = np.zeros((2*m,n), dtype=float) # prepare result array
+        for i in range (0, m): # loop data rows
+            i2 = 2 * i
+            wi = np.array([[lw[i2],0.],[0.,lw[i2+1]]]) # [[wi0,0],[0,wi1]] weighting matrix
+            l = 0
+            for j in range(0, self.num_terms): # loop coefficient columns
+                l2 = 2 * l
+                dcij = ldc[i,j] # 2 x 2 coeffcient derivate submatrix
+                                # [[dyi0/daj0, dyi1/daj0],[dyi0/daj1, dyi1/daj1]]
+                ldp[i2:i2+2,l2:l2+2] = np.dot(dcij,wi) # copy the weighted  2 x 2 coeffcient derivate submatrix
+        return ldp
+
+    def fit_lcoeff(self, xdata, ydata, ysigm=np.array([]), luse=np.array([])):
+        '''
+        Fits the projection to a set of data using a linear least-squares.
+
+        Parameters:
+            xdata : array_like, shape=(m,2)
+                object plane position data
+            ydata : array_like, shape=(m,2)
+                image plane position data
+            ysigm : array_like, shape=(m,2), optional
+                image plane position error
+            luse : array_like, int, optional
+                polynomial term flags
+
+        Return:
+            [prm, cov, msd]
+            prm : numpy.ndarray shape(num_terms * 2)
+                fitted parameters sorted like the flatted coefficient list lcoeff
+                [... ,alk0, alk1, ...]
+            cov : numpy.ndarray shape(num_terms * 2, num_terms * 2)
+                covariance matrix, entries are sorted as is prm
+            msd : float
+                mean square deviation between data and model per data item
+
+        '''
+        #
+        lcbk = self.lcoeff #  backup coefficients
+        lubk = self.luse # backup use flags
+        if np.size(luse) > 0: self.luse = luse
+        # data
+        m2 = min(np.size(xdata),np.size(ydata))
+        m = int((m2 - m2%2) / 2) # number of data tuples
+        # store data lists as private class members
+        self.__xdata_fit = np.array(xdata).flatten()[0:2*m].reshape(m,2) # x
+        self.__ydata_fit = np.array(ydata).flatten()[0:2*m].reshape(m,2) # y
+        self.__wdata_fit = np.full((m,2), 1.) # weights
+        # setup weights from y error estimates
+        if np.size(ysigm) >= m2:
+            ys = np.array(np.abs(ysigm)).flatten()[0:2*m].reshape(m,2)
+            for i in range(0, m):
+                if ys[i,0] > 0.:
+                    self.__wdata_fitx0[i,0] = 1./ys[i,0]
+                if ys[i,1] > 0.:
+                    self.__wdata_fitx0[i,1] = 1./ys[i,1]
+                wmax = np.max(self.__wdata_fit)
+                if wmax > 0:
+                    if ys[i,0] == 0.:
+                        self.__wdata_fit[i,0] = wmax
+                    if ys[i,1] == 0.:
+                        self.__wdata_fit[i,1] = wmax
+        # minimize weighted square deviations
+        mdesign = self.__getmat_lstsq(self.__xdata_fit, self.__wdata_fit) # (2*m,2*num_terms)
+        vbeta = self.__ydata_fit.reshape(2*m) * self.__wdata_fit.reshape(2*m) # (2*m)
+        #####
+        # use a linear least square solver here !
+        # but we want one which returns the covariance matrix of the solution as well !
+        # this is possible (see numerical recipes chapter 15)
+        # but seems not implemented in any of the numpy or scipy codes
+        # therefore emilys implements this in emilys.numerics.lstsq.linear_lstsq
+        #####
+        lsol = llstsq(mdesign, vbeta)
+        prmf = lsol.x
+        prmcov = lsol.cov
+        sqrdev = lsol.chisq
+        # resort result vectors for output
+        #prml = np.zeros(2 * self.num_terms)
+        prml = self.__getlcoeff_lstsq(prmf).flatten()
+        covl = np.zeros((2 * self.num_terms, 2 * self.num_terms))
+        lj = 0
+        for j in range(0, self.num_terms): # covl and prml rows
+            if j > 0 and self.luse[j] == 0: continue # skip unused coefficient
+            j2 = 2 * j
+            lj2 = 2 * lj
+            covl[j2] = self.__getlcoeff_lstsq(prmcov[lj2]).flatten()
+            covl[j2+1] = self.__getlcoeff_lstsq(prmcov[lj2+1]).flatten()
             lj = lj + 1
         # restore backup
         self.lcoeff = lcbk # coefficients
