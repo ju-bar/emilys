@@ -380,6 +380,31 @@ class projection_func_2d:
     #                       #
     # --------------------- #
 
+    def __getweights(self, ysigm):
+        '''
+        Returns an array of weights for an array of error estimates ysigm
+        using a mean : individual mixture
+
+        This method is private and should only be called from fit_* methods.
+
+        Parameter:
+            ysigm : numpy.array (m,)
+                error estimates
+
+        Return:
+            weights : numpy.array (m,)
+                weights
+        '''
+        m = np.size(ysigm)
+        if (m == 0): return np.array([])
+        ysm = np.mean(ysigm)
+        if (ysm <= 0.): return np.full(m, 1., dtype=float)
+        yss = np.std(ysigm)
+        fm = np.min([0.5, yss / ysm]) # mean fraction in weight model
+        ys = ysigm * (1. - fm) + fm * ysm
+        return np.reciprocal(ys)
+
+
     # [x0, lcoeff[1:]] -> prm
     def __getprm_fitx0(self, x0, lcoeff):
         '''
@@ -464,32 +489,32 @@ class projection_func_2d:
         x0, lc = self.__getcoeff_fitx0(x)
         #lc[2:] = x[2:] # copy input
         self.lcoeff = lc # set input
-        lx = self.__xdata_fitx0 + x0 # x[0:2] # (m,2)
-        lwf = self.__wdata_fitx0.flatten() # (2*m)
-        dpmf = (self.project(lx) - self.__ydata_fitx0).flatten() # (2*m,) [dy10,dy11,dy20,dy21,...,dyn0,dyn1]
-        return np.dot(dpmf, dpmf * lwf) / np.sum(lwf) # sum_i=1,m[ sum_a=0,1[ dyia**2 * wi ] ] / sum(wi)
+        lx = self.__xdata_fitx0 + x0 # x[0:2] # (m,2) : dxi = xi + x0
+        lwf = self.__wdata_fitx0.flatten() # (2*m) : wi
+        dpmf = (self.project(lx) - self.__ydata_fitx0).flatten() # (2*m,) : dyi = p(dxi) - yi : [dyi0,dyi1,dy10,dy11,dy20,dy21,...,dyn0,dyn1]
+        return np.dot(dpmf, dpmf * lwf) #/ np.sum(lwf) # s = sum_i=1,m[ sum_a=0,1[ dyi**2 * wi ] ]
     # ... and define a Jacobian
     def __dsdevproj_x0(self,x): # assumes shape(x) = (n,)
         x0, lc = self.__getcoeff_fitx0(x)
         #lc = np.zeros(self.num_terms*2)
         #lc[2:] = x[2:] # copy input
         self.lcoeff = lc # set input
-        lx = self.__xdata_fitx0 + x0 # x[0:2] # (m,2)
-        lwf = self.__wdata_fitx0.flatten() # (2*m)
-        dpm = (self.project(lx) - self.__ydata_fitx0) # (m,2) : [[dy10,dy11],[dy20,dy21],...,[dym0,dym1]
-        dx0 = self.project_deriv_x(lx) # (m,2,2) : [...,[[ddyi0/dk00, ddyi1/dk00], [ddyi0/dk01 + ddyi1/dk01],...]
+        lx = self.__xdata_fitx0 + x0 # x[0:2] # (m,2) : dxi = xi + x0
+        lwf = self.__wdata_fitx0.flatten() # (2*m) : wi
+        dpm = (self.project(lx) - self.__ydata_fitx0) # (m,2) : dyi = p(dxi) - pi : [[dy00,dy01],[dy10,dy11],[dy20,dy21],...,[dym0,dym1]
+        dx0 = self.project_deriv_x(lx) # (m,2,2) : D[dyi,x0] [...,[[ddyi0/dx00, ddyi1/dx00], [ddyi0/dx01 + ddyi1/dx01],...]
         #sdx0 = dx0.shape
         #dx0s = np.reshape(dx0,(sdx0[0],1,sdx0[1],sdx0[2])) # (m,1,2,2)
-        dcoeff = self.project_deriv_lcoeff(lx) # (m,n/2,2,2) : [...,[[ddyi0/daj0,ddyi1/daj0],[ddyi0/daj1,ddyi1/daj1]],...]
+        dcoeff = self.project_deriv_lcoeff(lx) # (m,n/2,2,2) : D[dyi,aj] = [...,[[ddyi0/daj0,ddyi1/daj0],[ddyi0/daj1,ddyi1/daj1]],...]
         #dp = dcoeff # (m,n/2,2,2)
         #sdp = dp.shape
         #dp[:,0,:,:] = dx0s[:,0,:,:] # (m,n/2,2,2) (replace y shift derivatives by x shift dervatives)
         # ... combine dp and dpm to # (n/2,2) : [...,sum_i[dyi0*ddyi0/daj0 + dyi1*ddyi1/daj0, dyi0*ddyi0/daj1 + dyi1*ddyi1/daj1],...]
-        dp = self.__getderiv_fitx0(dx0, dcoeff)
+        dp = self.__getderiv_fitx0(dx0, dcoeff) # (m,n/2,2,2) : D[dyi,prmj]
         sdp = dp.shape # (m,n/2,2,2)
         # The common dimensions are m = number of samples and 2, number space dimensions.
-        dps = np.transpose(dp,(1,3,0,2)).reshape(sdp[1],sdp[3],sdp[0]*sdp[2]) # (n/2,2,2*m)
-        ds2 = 2. * np.dot(dps, dpm.flatten() * lwf).flatten() / np.sum(lwf) # (n,) 
+        dps = np.transpose(dp,(1,3,0,2)).reshape(sdp[1],sdp[3],sdp[0]*sdp[2]) # (n/2,2,2*m) : D[dyi,prmj]
+        ds2 = 2. * np.dot(dps, dpm.flatten() * lwf).flatten() # / np.sum(lwf) # (n,) : D[s,prmj] = sum_i=1,m[ 2 * wi * dyi * D[dyi,prmj] ]
         return ds2
 
 
@@ -546,37 +571,29 @@ class projection_func_2d:
         self.__xdata_fitx0 = np.array(xdata).flatten()[0:2*m].reshape(m,2) # x
         self.__ydata_fitx0 = np.array(ydata).flatten()[0:2*m].reshape(m,2) # y
         self.__wdata_fitx0 = np.full((m,2), 1.) # weights
-        # setup weights from y error estimates
+        # setup weights from y error estimates: wi = 1/sigmai**2
         if np.size(ysigm) >= m2:
-            ys = np.array(np.abs(ysigm)).flatten()[0:2*m].reshape(m,2)
-            for i in range(0, m):
-                if ys[i,0] > 0.:
-                    self.__wdata_fitx0[i,0] = 1./ys[i,0]**2
-                if ys[i,1] > 0.:
-                    self.__wdata_fitx0[i,1] = 1./ys[i,1]**2
-                wmax = np.max(self.__wdata_fitx0)
-                if wmax > 0:
-                    if ys[i,0] == 0.:
-                        self.__wdata_fitx0[i,0] = wmax
-                    if ys[i,1] == 0.:
-                        self.__wdata_fitx0[i,1] = wmax
+            ys = np.array(ysigm).reshape(m,2)
+            yst = np.transpose(ys)
+            wst = np.array([self.__getweights(yst[0]**2), self.__getweights(yst[1]**2)])
+            self.__wdata_fitx0 = np.transpose(wst)
         # minimize weighted square deviations
         nmsol = minimize(self.__sdevproj_x0, prm0, method='BFGS', jac=self.__dsdevproj_x0)
         prmf = nmsol.x
-        prmcov = nmsol.hess_inv / np.sum(self.__wdata_fitx0.flatten()) #  rethink this scaling
         sqrdev = self.__sdevproj_x0(prmf)
+        prmcov = nmsol.hess_inv * sqrdev # np.sum(self.__wdata_fitx0.flatten()) #  rethink this scaling
         # resort result vectors for output
         prml = np.zeros(2 * self.num_terms)
         covl = np.zeros((2 * self.num_terms, 2 * self.num_terms))
         lj = 0
         for j in range(0, self.num_terms): # covl and prml rows
-            if j > 0 and self.luse[j] == 0: continue # skip unused coefficient
+            if (j > 0 and self.luse[j] == 0): continue # skip unused coefficient
             j2 = 2 * j
             lj2 = 2 * lj
             prml[j2:j2+2] = prmf[lj2:lj2+2] # copy prm
             li = 0
             for i in range(0, self.num_terms): # covl columns
-                if i > 0 and self.luse[i] == 0: continue # skip unused coefficient
+                if (i > 0 and self.luse[i] == 0): continue # skip unused coefficient
                 i2 = 2 * i
                 li2 = 2 * li
                 covl[j2:j2+2,i2:i2+2] = prmcov[lj2:lj2+2,li2:li2+2] # copy cov
@@ -608,7 +625,7 @@ class projection_func_2d:
         '''
         # all inputs are expected as numpy.ndarray
         luse = self.__luse_term.copy()
-        lc = np.zeros(self.num_terms, 2)
+        lc = np.zeros((self.num_terms, 2))
         l = 0
         for i in range(0,self.num_terms):
             if luse[i] == 1:
@@ -648,13 +665,17 @@ class projection_func_2d:
         ldp = np.zeros((2*m,n), dtype=float) # prepare result array
         for i in range (0, m): # loop data rows
             i2 = 2 * i
-            wi = np.array([[lw[i2],0.],[0.,lw[i2+1]]]) # [[wi0,0],[0,wi1]] weighting matrix
             l = 0
             for j in range(0, self.num_terms): # loop coefficient columns
+                if (luse[j]==0): continue # skip not flagged terms
                 l2 = 2 * l
-                dcij = ldc[i,j] # 2 x 2 coeffcient derivate submatrix
-                                # [[dyi0/daj0, dyi1/daj0],[dyi0/daj1, dyi1/daj1]]
-                ldp[i2:i2+2,l2:l2+2] = np.dot(dcij,wi) # copy the weighted  2 x 2 coeffcient derivate submatrix
+                dcij = ldc[i,j].T # transpose of 2 x 2 coeffcient derivate submatrix
+                                  # [[dyi0/daj0, dyi0/daj1],[dyi1/daj0, dyi1/daj1]]
+                #print([i,j,l,ldp[i2,l2:l2+2],dcij[0] * lw[i2]])
+                ldp[i2,l2:l2+2] = dcij[0] * lw[i2] # copy the weighted  2 x 2 coeffcient derivate submatrix
+                #print([i,j,l,ldp[i2+1,l2:l2+2],dcij[1] * lw[i2+1]])
+                ldp[i2+1,l2:l2+2] = dcij[1] * lw[i2+1] # copy the weighted  2 x 2 coeffcient derivate submatrix
+                l = l + 1
         return ldp
 
     def fit_lcoeff(self, xdata, ydata, ysigm=np.array([]), luse=np.array([])):
@@ -694,22 +715,16 @@ class projection_func_2d:
         self.__ydata_fit = np.array(ydata).flatten()[0:2*m].reshape(m,2) # y
         self.__wdata_fit = np.full((m,2), 1.) # weights
         # setup weights from y error estimates
-        if np.size(ysigm) >= m2:
-            ys = np.array(np.abs(ysigm)).flatten()[0:2*m].reshape(m,2)
-            for i in range(0, m):
-                if ys[i,0] > 0.:
-                    self.__wdata_fitx0[i,0] = 1./ys[i,0]
-                if ys[i,1] > 0.:
-                    self.__wdata_fitx0[i,1] = 1./ys[i,1]
-                wmax = np.max(self.__wdata_fit)
-                if wmax > 0:
-                    if ys[i,0] == 0.:
-                        self.__wdata_fit[i,0] = wmax
-                    if ys[i,1] == 0.:
-                        self.__wdata_fit[i,1] = wmax
+        if (np.size(ysigm) >= m2):
+            ys = np.array(ysigm).reshape(m,2)
+            yst = np.transpose(ys)
+            wst = np.array([self.__getweights(yst[0]), self.__getweights(yst[1])])
+            self.__wdata_fit = np.transpose(wst)
         # minimize weighted square deviations
         mdesign = self.__getmat_lstsq(self.__xdata_fit, self.__wdata_fit) # (2*m,2*num_terms)
+        # print(mdesign)
         vbeta = self.__ydata_fit.reshape(2*m) * self.__wdata_fit.reshape(2*m) # (2*m)
+        # print(vbeta)
         #####
         # use a linear least square solver here !
         # but we want one which returns the covariance matrix of the solution as well !
@@ -718,16 +733,16 @@ class projection_func_2d:
         # therefore emilys implements this in emilys.numerics.lstsq.linear_lstsq
         #####
         lsol = llstsq(mdesign, vbeta)
-        prmf = lsol.x
+        prmf = lsol.x[0]
         prmcov = lsol.cov
-        sqrdev = lsol.chisq
+        sqrdev = lsol.chisq[0]
         # resort result vectors for output
         #prml = np.zeros(2 * self.num_terms)
         prml = self.__getlcoeff_lstsq(prmf).flatten()
         covl = np.zeros((2 * self.num_terms, 2 * self.num_terms))
         lj = 0
         for j in range(0, self.num_terms): # covl and prml rows
-            if j > 0 and self.luse[j] == 0: continue # skip unused coefficient
+            if (self.luse[j] == 0): continue # skip unused coefficient
             j2 = 2 * j
             lj2 = 2 * lj
             covl[j2] = self.__getlcoeff_lstsq(prmcov[lj2]).flatten()

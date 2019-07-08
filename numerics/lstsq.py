@@ -124,7 +124,8 @@ def linear_lstsq(A, b, tol=1.E-8):
     #
     # - implement solver switch here
     sol.solver = 'svd' # using singular value decomposition from numpy.linalg
-    matu, diags, matvh = np.linalg.svd(mata)
+    matu, diags, matvh = np.linalg.svd(mata, full_matrices=False)
+    #print('- U:',matu.shape,', W:',diags.shape,', Vh:',matvh.shape)
     matvt = np.transpose(matvh)
     diagstol = diags
     # edit singular values below tol
@@ -163,7 +164,7 @@ def linear_lstsq(A, b, tol=1.E-8):
         #         # bsum = bsum * wdiag[j]
         #         bsum = np.dot(matu[j], vb[k]) * wdiag[j]
         #     btmp[j] = bsum
-        btmp = np.dot(matu, vb[k]) * wdiag
+        btmp = np.dot(matu.T, vb[k]) * wdiag # U_T . b
         # for j in range(0, sol.m):
         #     bsum = 0.
         #     for i in range(0, sol.m):
@@ -173,6 +174,7 @@ def linear_lstsq(A, b, tol=1.E-8):
         sol.x[k] = np.dot(matvt, btmp)
         # residuals for the solution by back-projection
         btmp = np.dot(mata, sol.x[k])
+        sol.chisq = np.zeros(sol.l)
         sol.chisq[k] = np.sum((btmp - vb[k])**2)
     #
     return sol
