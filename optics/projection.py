@@ -14,7 +14,7 @@ published under the GNU General Publishing License, version 3
 from numba import jit # include compilation support
 import numpy as np
 from scipy.special import comb
-from scipy.optimize import minimize
+from scipy.optimize import minimize, root
 from emilys.numerics.lstsq import linear_lstsq as llstsq
 
 class projection_func_2d:
@@ -359,7 +359,7 @@ class projection_func_2d:
             for l in range(1, n+1): # calculate x0**l and x1**l for l = 1 .. n
                 fpx[l] = pwx
                 pwx = pwx * lx[i]
-            fpt = fptz # reset terms
+            fpt = fptz.copy() # reset terms
             for j in range(0, m): # calculate binomial(l+k,l) [l * x0**(l-1) * x1**k, k * x0**l * x1**(k-1)] for all terms
                 if 0 == self.__luse_term[j]: continue # skip term j
                 l, k = self.__lidx_to_coeff[j]
@@ -373,6 +373,83 @@ class projection_func_2d:
             # project coefficient lists on binomial term derivative list
             ldy[i] = np.dot(fpt.T, self.__lcoeff) # (2,m).(m,2) -> (2,2): [[dyi0/dx0,dyi1/dx0],[dyi0/dx1,dyi1/dx1]]
         return ldy
+
+    def __bp_project(self, x):
+        '''
+        Internal projection function for the backprojection root finder.
+
+        Call this only from internal method backproject!
+
+        Assumes tuple input shape (2,).
+        '''
+        return self.project(x)[0]
+
+    def __bp_project_deriv_x(self, x):
+        '''
+        Internal projection derivative function for the backprojection root finder.
+
+        Call this only from internal method backproject!
+
+        Assumes tuple input shape (2,).
+        '''
+        return self.project_deriv_x(x)[0]
+
+    def backproject(self, y, lcoeff = np.array([]), luse=np.array([]), tol=1.E-8):
+        '''
+        Back-projects from y to x for the 2d polynomial p(x) = y.
+
+        Parameters:
+            y : array_like, float, tuple, shape = (N,2)
+                position in image plane [...,[yi0,yi1],...]
+            lcoeff : array_like, float, optional
+                sequence of projection coefficient interpreted as tuples {[alk0,alk1]}
+            luse : array_like, int, optional
+                polynomial term flags
+
+        Return:
+            numpy.ndarray
+                [...,[xi0,xi1],...]
+                list of back-projected positions as array of shape(N, 2) with
+                N = number of tuples in parameter y = numpy.size(x)/2
+
+        Remarks:
+            You may set the coefficients before calling the project method
+            using projection_func_2d.lcoeff = lcoeff.
+
+            The function calculates for each tuple [yi0,yi1]:
+            [xi0,xi1] = scipy.optimize.root( [yi0,yi1] == project([xi0,xi1]) ).x
+            Since this is an iterative algorithm, it will be slow.
+
+        '''
+        if np.size(lcoeff) > 0: self.lcoeff = lcoeff # set new coefficients if present
+        if np.size(luse) > 0: self.luse = luse # set flags
+        nx1 = np.size(y)
+        assert 0 == nx1%2 and nx1 > 0, 'project expects an even number of coordinates'
+        nx = int(nx1 / 2)
+        ly = np.reshape(y,(nx,2))
+        lx = np.zeros((nx,2), dtype=float) # prepare result arrays
+        y0 = self.__lcoeff[0] * self.__luse_term[0] # get shift term for initial guess
+        uy0 = self.__luse_term[0]
+        d1 = ( self.__lcoeff[1,0] * self.__lcoeff[2,1] \
+              - self.__lcoeff[1,1] * self.__lcoeff[2,0] ) \
+              * self.__luse_term[1] * self.__luse_term[2]
+        m1 = np.array([[1.,0.],[0.,1.]]) # init inverse linear term as identity
+        if (d1 != 0.): # get inverse of the linear terms for initial guess
+            m1 = np.array([[self.__lcoeff[2,1], -self.__lcoeff[2,0]],[-self.__lcoeff[1,1], self.__lcoeff[1,0]]]) / d1
+        self.__luse_term[0] = 1 # activate shift term
+        for i in range(0, nx): # for all positions
+            self.__lcoeff[0] = y0 - ly[i] # modify shift term
+            xguess = np.dot(m1, -self.__lcoeff[0]) # obtain initial guess
+            # use root finding to get x
+            xsol = root(self.__bp_project, xguess, jac=self.__bp_project_deriv_x, tol=tol)
+            if xsol.success:
+                lx[i] = xsol.x
+            else:
+                lx[i] = xguess
+        # reset lcoeff[0] to initial
+        self.__lcoeff[0] = y0
+        self.__luse_term[0] = uy0
+        return lx
 
     # --------------------- #
     #                       #
