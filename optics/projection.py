@@ -439,12 +439,15 @@ class projection_func_2d:
         self.__luse_term[0] = 1 # activate shift term
         for i in range(0, nx): # for all positions
             self.__lcoeff[0] = y0 - ly[i] # modify shift term
-            xguess = np.dot(m1, -self.__lcoeff[0]) # obtain initial guess
-            # use root finding to get x
-            xsol = root(self.__bp_project, xguess, jac=self.__bp_project_deriv_x, tol=tol)
-            if xsol.success:
-                lx[i] = xsol.x
-            else:
+            xguess = np.dot(m1, -self.__lcoeff[0]) # obtain initial guess (extact in first order)
+            if (self.max_order > 1):
+                # use root finding to get x
+                xsol = root(self.__bp_project, xguess, jac=self.__bp_project_deriv_x, tol=tol)
+                if xsol.success:
+                    lx[i] = xsol.x
+                else:
+                    lx[i] = xguess
+            else: # keep guess in case of a first order projection
                 lx[i] = xguess
         # reset lcoeff[0] to initial
         self.__lcoeff[0] = y0
