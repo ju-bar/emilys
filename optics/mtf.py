@@ -73,10 +73,12 @@ def getmtfkernel(lmtf, ndim, fsca=1.):
         lmtf: np.array(shape=(m,2))
             list of m tuples (frequency, mtf value)
         ndim: np.array(2)
-            2D image (kernel) dimensions
+            2D image (kernel) dimensions [ny, nx]
         fsca: float (default = 1.)
             frequency scale corresponding to the ratio of
             sampling rates (target / data) or (experiment / simulation)
+            The parameter accepts an array of length 2 defining
+            different scales for each dimension [fscay, fscax].
 
     Remarks:
         The MTF values are assumed to be without pixelation coefficients
@@ -95,6 +97,12 @@ def getmtfkernel(lmtf, ndim, fsca=1.):
     nmtf = lmtf.shape # number of available mtf data
     if len(nmtf) != 2: return np.array([])
     if nmtf[0] < 10: return np.array([])
+    lfsca = np.array([1.,1.])
+    if (np.size(fsca) > 1): # different scale for x and y
+        lfsca = np.array(fsca.flatten()[0:2])
+    else: # same scale for x and y
+        lfsca[0] = np.array([fsca]).flatten()[0]
+        lfsca[1] = lfsca[0]
     # initialize helper variables and arrays
     dfmtf = lmtf[1,0] # mtf frequency sampling
     fy = np.fft.fftfreq(ndim[0]) # y-frequency indices
@@ -102,7 +110,7 @@ def getmtfkernel(lmtf, ndim, fsca=1.):
     amtf = np.zeros((ndim[0],ndim[1])) # prepare mtf array
     lmtf1 = lmtf # initialized used mtf data
     # mtf span check
-    if lmtf[int(nmtf[0])-1,0] / fsca < 0.75: # do we need to extrapolate beyond the given mtf data ?
+    if lmtf[int(nmtf[0])-1,0] / np.max(lfsca) < 0.75: # do we need to extrapolate beyond the given mtf data ?
         # yes, extrapolate to f = 1.0
         lmtft = lmtf.T # get transposed data
         # fit to the last 1/3 values
@@ -110,23 +118,22 @@ def getmtfkernel(lmtf, ndim, fsca=1.):
         fdata = lmtf[nfitrng[0]:nfitrng[1]].T # get data for fitting
         popt = curve_fit(texp, fdata[0], fdata[1]) # fit
         # extrapolate frequency range to 1 from the fitted exponential
-        n1 = 1 + int(fsca/dfmtf + 0.5) # determine index range for frequencies up to 1
-        print('- extrapolation to f =', fsca, ', index =', n1)
+        n1 = 1 + int(np.max(lfsca)/dfmtf + 0.5) # determine index range for frequencies up to 1
+        # print('- extrapolation to f =', np.max(lfsca), ', index =', n1)
         fextr = np.arange(nfitrng[1]+1,n1) * dfmtf # prepare frequency array
         mtfextr = texp(fextr, *popt[0]) # calculate tail values
         lmtf1 = np.array([np.append(lmtft[0],fextr),np.append(lmtft[1],mtfextr)]).T # append and transpose back
         nmtf = lmtf1.shape # update number of available mtf data
     # mtf grid calculation
-    for j in range(0,ndim[0]): # loop rows
-        fy2 = fy[j]**2 # squared row frequency
-        scy = np.sinc(fy[j]) # row sinc
-        for i in range(0,ndim[1]): # loop columns
-            fm2 = fx[i]**2 + fy2 # frequency modulus squared
+    for j in range(0,ndim[0]): # loop rows (v)
+        fy2 = (lfsca[0] * fy[j])**2 # squared row frequency
+        scy = np.sinc(fy[j]) # row sinc ! Sinc is for the given sampling, not affected by lfsca
+        for i in range(0,ndim[1]): # loop columns (h)
+            fm2 = (lfsca[1] * fx[i])**2 + fy2 # frequency modulus squared
             scx = np.sinc(fx[i]) # column sinc
-            fm = np.sqrt(fm2) # frequency modulus
-            fms = fm*fsca # scaled frequency modulus
+            fm = np.sqrt(fm2) # scaled frequency modulus
             # prepare linear interpolation on radial mtf list
-            km = fms/dfmtf # mtf array index corresponding to fms
+            km = fm/dfmtf # mtf array index corresponding to fm
             k0 = int(km) # lower array index
             fk = km - k0 # fraction to lower array index
             k1 = min(k0 + 1,nmtf[0]) # limited upper array index
