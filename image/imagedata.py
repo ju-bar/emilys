@@ -133,3 +133,22 @@ def image_pos_sum(image, lpoints, ipol=1):
     for l in range(0, npts):
         spt += image_at(image, lpoints[l], ipol)
     return spt
+
+def maxpos(array):
+    '''
+    Returns the index of the first array position with maximum value
+
+    Parameters:
+        array : numpy.ndarray int, float
+            list of values
+
+    Return:
+        numpy.array (2,)
+            (x,y) location of global maximum
+    '''
+    nd = array.shape
+    assert len(nd)==2, 'this works only for 2d arrays'
+    imax = np.argmax(array)
+    i = imax%nd[1]
+    j = int((imax-i)/nd[1])
+    return np.array([i,j])
