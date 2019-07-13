@@ -12,26 +12,37 @@ published under the GNU General Publishing License, version 3
 """
 import numpy as np
 # %%
-def gauss_2d(x, y, x0, y0, a, rbxx, rbxy, rbyy, c):
+def gauss_2d(x_tuple, x0, y0, a, bxx, bxy, byy, c):
     '''
-    a * Exp[ -rbxx*(x-x0)**2 - 2*rbxy*(x-x0)*(y-y0) - rbyy*(y-y0)**2] + c
+    a * Exp[ - (bxx*bxx + bxy*bxy) * (x-x0)**2 
+             - 2 * bxy * (bxx + byy) * (x-x0) * (y-y0)
+             - (byy*byy + bxy*bxy) * (y-y0)**2 ] + c
     '''
+    (x, y) = x_tuple
     dx = x - x0
     dy = y - y0
-    varg = rbxx * dx**2 + 2 * rbxy * dx * dy + rbyy * dy**2
+    fxx = (bxx * bxx + bxy * bxy)
+    fxy = 2 * bxy * (bxx + byy)
+    fyy = (byy * byy + bxy * bxy)
+    varg = fxx * dx**2 + 2 * fxy * dx * dy + fyy * dy**2
     return a * np.exp(-varg) + c
 # %%
-def gauss_2d_round(x, y, x0, y0, a, b, c):
+def gauss_2d_round(x_tuple, x0, y0, a, b, c):
     '''
-    a * exp[-0.5 * ((x-x0)**2 + (y-y0)**2) / b**2] + c
+    a * exp[ -b**2 * ((x-x0)**2 + (y-y0)**2) ] + c
     '''
-    return a * np.exp(-0.5 * ((x-x0)**2 + (y-y0)**2) / b**2) + c
+    (x, y) = x_tuple
+    dx = x - x0
+    dy = y - y0
+    varg = b**2 * (dx**2 + dy**2)
+    return a * np.exp(-varg) + c
 # %%
-def gauss_2d_round_slope(x, y, x0, y0, a, b, c, dx, dy):
+def gauss_2d_round_slope(x_tuple, x0, y0, a, b, c, dx, dy):
     '''
-    a * exp[-0.5 * ((x-x0)**2 + (y-y0)**2) / b**2] + c
+    a * exp[-b**2 * ((x-x0)**2 + (y-y0)**2)] + c
         + dx*(x-x0) + dy*(y-y0)
     '''
-    gr = gauss_2d_round(x, y, x0, y0, a, b, c)
+    (x, y) = x_tuple
+    gr = gauss_2d_round(x_tuple, x0, y0, a, b, c)
     return gr + dx*(x-x0) + dy*(y-y0)
 # %%
