@@ -41,7 +41,7 @@ def loadmtf(sfilename):
     try:
         file_handle = open(sfilename, 'r') # try open the file
     except (OSError,IOError) as esc:
-        print("Error: LoadMTF could not open [",sfilename,"]:",format(esc))
+        print("Error: loadmtf failed:",format(esc))
     else:
         opened = True
         str_lines = file_handle.readlines()
