@@ -116,7 +116,7 @@ def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., 
     return 0. # default exit
 # %%
 @jit
-def aperture_grid(arr, p0=np.array([0.,0.]), sq=np.array([[1.,0.],[1.,0.]]),
+def aperture_grid(arr, p0=np.array([0.,0.]), sq=np.array([[1.,0.],[0.,1.]]),
                   q0=np.array([0.,0.]), qlim=1., qsmt=0.):
     """
 
@@ -148,7 +148,7 @@ def aperture_grid(arr, p0=np.array([0.,0.]), sq=np.array([[1.,0.],[1.,0.]]),
 # %%
 @jit
 def aperture_dist3_grid(arr, p0=np.array([0.,0.]),
-                        sq=np.array([[1.,0.],[1.,0.]]),
+                        sq=np.array([[1.,0.],[0.,1.]]),
                         q0=np.array([0.,0.]), qlim=1., qsmt=0.,
                         qdist=np.array([])):
     """
