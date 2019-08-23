@@ -81,21 +81,21 @@ def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., 
     qs = np.abs(qsmt) # strength of edge smoothness
     ql = np.abs(qlim) # aperture radius (must be positive)
     if ql > 0.: # the aperture is open
-        dq = q - q0
-        dqm2 = np.dot(dq,dq)
+        dq = q - q0 # vector from aperture center to query point
+        dqm2 = np.dot(dq,dq) # squared distance of query point from center
         if dqm2 > 0.: # the query point is away from the aperture center
-            dqe = dq / np.sqrt(dqm2) # unit vector pointing from aperture center to query point
+            dqe = dq / np.sqrt(dqm2) # unit vector pointing from aperture center to query point [cos(p),sin(p)]
             dql = dqe * ql # vector from aperture center to its edge in direction of query point
             dql3 = dql
             if na > 0: # there are edge distortion parameters
-                qx1 = dqe[0]
-                qy1 = dqe[1]
-                qx2 = qx1*qx1
-                qx3 = qx2*qx1
-                qy2 = qy1*qy1
-                qy3 = qy2*qy1
-                lbd3x = np.array([qx1,qy1,qx2-qy2,-2*qx1*qy1,qx3-3*qx1*qy2,(3*qx2*qy1-qy3)/4])
-                lbd3y = np.array([-qy1,qx1,-2*qx1*qy1,qy2-qx2,qy3-3*qx2*qy1,(qx3-3*qx1*qy2)/4])
+                qx1 = dqe[0] # cos(p)
+                qy1 = dqe[1] # sin(p)
+                qx2 = qx1*qx1 # cos(p)**2
+                qx3 = qx2*qx1 # cos(p)**3
+                qy2 = qy1*qy1 # sin(p)**2
+                qy3 = qy2*qy1 # sin(p)**3
+                lbd3x = np.array([qx1,qy1,qx2-qy2,-2*qx1*qy1,qx3-3*qx1*qy2,3*qx2*qy1-qy3]) # aberration x basis
+                lbd3y = np.array([-qy1,qx1,-2*qx1*qy1,qy2-qx2,qy3-3*qx2*qy1,qx3-3*qx1*qy2]) # aberration y basis
                 for l in range(0, na):
                     #print("dbg aperture_dist3: l=",l,", qdist[l]=",qdist[l])
                     #print("dbg aperture_dist3: bqx(l)=",lbd3x[l],", bqy(l)=",lbd3y[l])
