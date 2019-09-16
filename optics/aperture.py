@@ -77,9 +77,9 @@ def aperture_a(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., qa=0
             
     """
     if (qlim > 0.):
-        a1x = qa * np.cos( 2.* qp ) # 2-fold distortion x component
-        a1y = qa * np.sin( 2.* qp ) # 2-fold distortion y component
-        adet = (qlim - qa)*(qlim - qa)/(qlim*qlim)
+        a1x = qa * np.cos( 2.* qp ) / qlim # rel. 2-fold distortion x component
+        a1y = qa * np.sin( 2.* qp ) / qlim # rel. 2-fold distortion y component
+        adet = 1. + (qa/qlim)**2
         if (adet == 0.0):
             return 0.0 # closed aperture by line distortion, exit
         radet = 1. / adet
