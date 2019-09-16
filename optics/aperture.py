@@ -55,6 +55,55 @@ def aperture(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0.):
     return 0. # default exit
 # %%
 @jit
+def aperture_a(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., qa=0., qp=0.):
+    """
+
+    Calculates transmission values for a smooth aperture in 2D with 2-fold edge distortion
+    (numba compiled)
+
+    Parameters:
+        q : np.array[shape=(2)]
+            query point
+        q0 : np.array[shape=(2)]
+            aperture center position
+        qlim : float
+            aperture radius
+        qsmt : float
+            edge smoothness
+        qa : float
+            magnitude of 2-fold distortion
+        qp : float
+            direction of positive axis of 2-fold dist. [-Pi, Pi[
+            
+    """
+    if (qlim > 0.):
+        a1x = qa * np.cos( 2.* qp ) # 2-fold distortion x component
+        a1y = qa * np.sin( 2.* qp ) # 2-fold distortion y component
+        adet = (qlim - qa)*(qlim - qa)/(qlim*qlim)
+        if (adet == 0.0):
+            return 0.0 # closed aperture by line distortion, exit
+        radet = 1. / adet
+        dq = q - q0 # distance vector to center
+        dqx1 = ((1. - a1x)*dq[0] - a1y*dq[1])*radet # back project dqx to undistorted plane
+        dqy1 = (-a1y*dq[0] + (1. + a1x)*dq[1])*radet # back project dqy to undistorted plane
+        dq2 = dqx1 * dqx1 + dqy1 * dqy1
+        dqm = np.sqrt(dq2) # undistorted distance from aperture center
+        dqs = abs(qsmt) # absolute smoothness
+        if (dqm > 0.0): # handle default case (beam is somewhere in aperture area)
+            if (dqs > 0.0): # calculate smoothed aperture
+                darg = np.pi * (dqm - qlim) / dqs
+                return (1. - np.tanh(darg))*0.5 # aperture value
+            else: # sharp aperture
+                if (dqm < qlim):
+                    return 1.0 # point is in the aperture
+        else: # handle on-axis case
+            return 1.0 # ... always transmit this beam
+    else:
+        return 0.
+    return 0.
+
+# %%
+@jit
 def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., qdist=np.array([])):
     """
 
@@ -144,6 +193,43 @@ def aperture_grid(arr, p0=np.array([0.,0.]), sq=np.array([[1.,0.],[0.,1.]]),
             dp = np.array([i,j]) - p0
             q = np.dot(sq,dp)
             arr[j,i] = aperture(q, q0, qlim, qsmt)
+    return 0
+# %%
+@jit
+def aperture_a_grid(arr, p0=np.array([0.,0.]),
+                    sq=np.array([[1.,0.],[0.,1.]]),
+                    q0=np.array([0.,0.]),
+                    qlim=1., qsmt=0., qa=0., qp=0.):
+    """
+
+    Calculates transmission values for a smooth aperture with 
+    2-fold edge distortion on a 2D grid.
+    (numba compiled)
+
+    Parameters:
+        arr : np.array[shape=(ny,nx)]
+            array receiving aperture transmission values
+        p0 : np.array[shape=(2)]
+            origin pixel
+        sq : np.array[shape=(2,2)]
+            physical scale
+        q0 : np.array[shape=(2)]
+            aperture center position on physical scale
+        qlim : float
+            aperture radius on physical scale
+        qsmt : float
+            edge smoothness on physical scale
+        qa : float
+            magnitude of 2-fold distortion on physical scale
+        qp : float
+            direction of positive axis of 2-fold dist. [-Pi, Pi[
+    """
+    nd = arr.shape
+    for j in range(0, nd[1]):
+        for i in range(0, nd[0]):
+            dp = np.array([i,j]) - p0
+            q = np.dot(sq,dp)
+            arr[j,i] = aperture_a(q, q0, qlim, qsmt, qa, qp)
     return 0
 # %%
 @jit
