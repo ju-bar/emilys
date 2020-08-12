@@ -41,7 +41,7 @@ def image_at_bilin(image, pos):
     jl = int(np.floor(pos[1])) # y
     jh = jl + 1
     fj = pos[1] - jl
-    # peridic
+    # periodic
     il = np.mod(il,dimg[1]) # x
     ih = np.mod(ih,dimg[1])
     jl = np.mod(jl,dimg[0]) # y
