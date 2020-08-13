@@ -152,3 +152,20 @@ def maxpos(array):
     i = imax%nd[1]
     j = int((imax-i)/nd[1])
     return np.array([i,j])
+
+# %%
+@jit
+def data_convolute_2d(sfile_fmt, ix, iy, ndata, krn, thr_krn):
+    dkrn = krn.shape
+    my = dkrn[0]
+    mx = dkrn[1]
+    apat = np.zeros(ndata).astype(np.float32) # init zero accumulation buffer
+    for jy in range(0, my):
+        ly = (jy - iy) % my # periodic wrap of the the shifted y index of the kernel
+        for jx in range(0, mx):
+            lx = (jx - ix) % mx # periodic wrap of the the shifted x index of the kernel
+            if (krn[ly,lx] > thr_krn): # only add effective pixels
+                sfile_in = sfile_fmt.format(jx,jy)
+                bpat = np.fromfile(sfile_in, dtype=np.float32)
+                apat += bpat * krn[ly,lx]
+    return apat
