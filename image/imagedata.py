@@ -83,7 +83,7 @@ def image_resample(image, nout, p0in=np.array([0.,0.]),
                    sampling=np.array([[1.,0.],[0.,1.]]), ipol=1):
     '''
 
-    Resamples and image on a grid of new dimensions with given shift and sampling
+    Resamples an image on a grid of new dimensions with given shift and sampling
 
     Parameters:
         image : numpy.array of 2 dimensions
@@ -152,6 +152,31 @@ def maxpos(array):
     i = imax%nd[1]
     j = int((imax-i)/nd[1])
     return np.array([i,j])
+
+def com(array):
+    '''
+    Returns the center of mass of image data
+
+    Parameters:
+        array : numpy.ndarray int, float
+            list of values
+
+    Return:
+        numpy.array (2,)
+            (x,y) center of mass
+    '''
+    nd = array.shape
+    assert len(nd)==2, 'this works only for 2d arrays'
+    s0 = 0.
+    sx = 0.
+    sy = 0.
+    for j in range(0, nd[0]):
+        for i in range(0, nd[1]):
+            v = array[j,i]
+            s0 += v
+            sx += v * i
+            sy += v * j
+    return np.array([sx/s0,sy/s0])
 
 # %%
 @jit
