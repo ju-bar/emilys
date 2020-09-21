@@ -13,12 +13,74 @@ published under the GNU General Publishing License, version 3
 # %%
 from numba import jit # include compilation support
 import numpy as np # include numeric functions
+import emilys.image.imagedata as aimg # include image access routines
+# %%
+@jit
+def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0.,2. * np.pi)), ipol = 1):
+    '''
+
+    Transforms a 2D image to new grid in polar representation using a re-binning algorithm.
+
+    Parameters:
+        image : numpy.array of 2 dimensions
+            data on a regular grid
+        num_rad : integer
+            number of radial sample
+        num_phi : integer
+            number of azimuthal samples
+        pole : numpy.array, size=2
+            position (x,y) of the pole in the input image (fractional pixel coordinate)
+        rng_rad : numpy.array, size=2
+            radial range in pixels
+        rng_phi : numpy.array, size=2
+            azimuthal range in radian, use only values from the positive interval [0, 2*Pi]!
+            default = np.array((0.,2.*np.pi))
+        ipol : int
+            interpolation type
+            0 = nearest neigbor
+            1 = bi-linear
+
+    Returns:
+        numpy.array of 2 dimensions, shape (num_rad,num_phi)
+
+    Remarks:
+        May produce strange signal with noise data and of the polar sampling is fine
+        compared to the input grid.
+
+    '''
+    nd = image.shape
+    # check input
+    assert len(nd)==2, 'this works only for 2d arrays as input'
+    assert num_rad>=1, 'number of radial samples must be at least 1'
+    assert num_phi>=1, 'number of azimuthal samples must be at least 1'
+    assert len(rng_rad)==2, 'invalid length of radial range input'
+    assert len(rng_phi)==2, 'invalid length of azimuthal range input'
+    assert (rng_rad[0]<rng_rad[1] and rng_rad[0]>=0.), 'invalid radial range parameter'
+    assert (ipol>=0 and ipol<=1), 'invalid interpolation switch (0,1)'
+    # initialize
+    ny = nd[0]
+    nx = nd[1]
+    r0 = rng_rad[0]
+    r1 = rng_rad[1]
+    p0 = rng_phi[0]
+    p1 = rng_phi[1]
+    if (p0 == p1): p1 = p0 + 2.*np.pi # same phi -> full circle
+    image_out = np.zeros((num_rad,num_phi)) # polar data
+    # loop over polar coordinates
+    for ir in range(0, num_rad): # loop over radii
+        r = r0 + (r1 - r0) * ir / num_rad # radial coordinate
+        for ip in range(0, num_phi): # loop over azimuth
+            p = p0 + (p1 - p0) * ip / num_phi# azimuthal coordinate
+            pos = pole + r * np.array([np.cos(p), np.sin(p)])
+            if (pos[0] < 0. or pos[0] > -1.+nx or pos[1] < 0. or pos[1] > -1.+ny): continue
+            image_out[ir,ip] = aimg.image_at(image, pos, ipol)
+    return image_out
 # %%
 @jit
 def polar_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0.,2. * np.pi))):
     '''
 
-    Resamples a 2D image to new grid in polar representation.
+    Transforms a 2D image to new grid in polar representation using a re-binning algorithm.
 
     Parameters:
         image : numpy.array of 2 dimensions
@@ -35,6 +97,13 @@ def polar_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((
             azimuthal range in radian, use only values from the positive interval [0, 2*Pi]!
             default = np.array((0.,2.*np.pi))
 
+    Returns:
+        numpy.array of 2 dimensions, shape (num_rad,num_phi)
+
+    Remarks:
+        Due to the re-binning algorithm, some bins may not receive data, especially when
+        using fine sampling around the pole region. If you want to avoid this, you may use
+        the routine polar_resample.
     '''
     nd = image.shape
     # check input
@@ -91,8 +160,8 @@ def polar_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((
                 ipr = (ip - p0) / delta_p # azimuth relative to rng_phi - 0 ... 1
                 if (check_phi): # segment
                     if (ipr < 0. or ipr > 1.): continue # outside azimuthal range, skip pixel
-            jr = int((ir - r0) / (r1 - r0) * num_rad) # round to next radial bin
-            jp = int(ipr * num_phi)
+            jr = int(np.round((ir - r0) / (r1 - r0) * num_rad)) # round to next radial bin
+            jp = int(np.round(ipr * num_phi)) # round to next azimuthal bin
             #print("i =",i,", j =",j,", r =",ir,", p =", ip,", jr =",jr,", jp =",jp)
             if (jr >= 0 and jr < num_rad and jp >= 0 and jp < num_phi):
                 norm_out[jr,jp] += 1.

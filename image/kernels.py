@@ -12,6 +12,7 @@ published under the GNU General Publishing License, version 3
 """
 from numba import jit # include compilation support
 import numpy as np
+import emilys.optics.aperture as apert
 # %%
 @jit # compilation decorator, do this, if you intend to call the function several timed
 def bwl_gaussian(shape=None, size=0.):
@@ -117,7 +118,7 @@ def source_normal(kernel, samp, src_size):
         samp: numpy.ndarray shape=(2,) dtype=float
             row and column sampling rates
         src_size: float
-            source size (1/e HW) in physical units
+            source size (HWHM) in physical units
     
     Return:
         modifies the array kernel
@@ -274,3 +275,111 @@ def source_distribution(shape, samp, src_size, src_type=1):
     elif (ntuse == 3):
         source_disk(kernel, samp, srcsz)
     return kernel
+
+# %%
+@jit # compilation decorator, apply if multiple call is intended and speed matters
+def filter_normal(ndim, samp, flt_size):
+    '''
+    Returns a Gaussian isotropic filter kernel for a low-pass in an array of given dimension.
+
+    Parameters:
+        ndim: numpy.ndarray shape=(2,) dtype=int
+            kernel dimensions (nrows, ncolumns), (ny, nx)
+        samp: numpy.ndarray shape=(2,) dtype=float
+            row and column sampling rates (sx, sy)
+        flt_size: float
+            filter kernel size (HWHM) in physical units
+    
+    Return:
+        kernel: numpy.ndarray shape=(nrows, ncolumns), dtype=float
+    '''
+    srcsz = np.abs(flt_size)
+    kernel = np.zeros((ndim[0], ndim[1]), dtype=float)
+    ndim2 = np.array([ndim[0] >> 1, ndim[1] >> 1])
+    krad = 4 * srcsz # calculate filter kernel up to 4 sigma
+    kr2 = krad**2
+    nkx2 = int(min(np.ceil(krad / samp[0]),ndim2[1]))
+    nky2 = int(min(np.ceil(krad / samp[1]),ndim2[0]))
+    kprm = -np.log(2.) / srcsz**2
+    for j in range(-nky2, nky2+1):
+        j1 = j % ndim[0]
+        ry = samp[1] * j
+        ry2 = ry**2
+        for i in range(-nkx2, nkx2+1):
+            i1 = i % ndim[1]
+            rx = samp[0] * i
+            r2 = ry2 + rx**2
+            if (r2 < kr2):
+                kval = np.exp(kprm * r2)
+                kernel[j1,i1] = kval
+    return kernel
+
+# %%
+@jit # compilation decorator, apply if multiple call is intended and speed matters
+def filter_exp4(ndim, samp, flt_size):
+    '''
+    Returns an exponential g^4 isotropic filter kernel for a low-pass in an array of given dimension.
+
+    Parameters:
+        ndim: numpy.ndarray shape=(2,) dtype=int
+            kernel dimensions (nrows, ncolumns), (ny, nx)
+        samp: numpy.ndarray shape=(2,) dtype=float
+            row and column sampling rates (sx, sy)
+        flt_size: float
+            filter kernel size (HWHM) in physical units
+    
+    Return:
+        kernel: numpy.ndarray shape=(nrows, ncolumns), dtype=float
+    '''
+    srcsz = np.abs(flt_size)
+    kernel = np.zeros((ndim[0], ndim[1]), dtype=float)
+    ndim2 = np.array([ndim[0] >> 1, ndim[1] >> 1])
+    krad = 4 * srcsz # calculate filter kernel up to 4 sigma
+    kr2 = krad**2
+    nkx2 = int(min(np.ceil(krad / samp[0]),ndim2[1]))
+    nky2 = int(min(np.ceil(krad / samp[1]),ndim2[0]))
+    kprm = -np.log(2.) / srcsz**4
+    for j in range(-nky2, nky2+1):
+        j1 = j % ndim[0]
+        ry = samp[1] * j
+        ry2 = ry**2
+        for i in range(-nkx2, nkx2+1):
+            i1 = i % ndim[1]
+            rx = samp[0] * i
+            r2 = ry2 + rx**2
+            if (r2 < kr2):
+                kval = np.exp(kprm * r2**2)
+                kernel[j1,i1] = kval
+    return kernel
+
+
+# %%
+@jit # compilation decorator, apply if multiple call is intended and speed matters
+def filter_sigmoid_2d(ndim, samp, flt_size, smoothness=0., anisotropy=0., orientation=0.):
+    '''
+    Returns a sigmodial anisotropic filter kernel for a low-pass in an array of given dimension.
+
+    Parameters:
+        ndim: numpy.ndarray shape=(2,) dtype=int
+            kernel dimensions (nrows, ncolumns), (ny, nx)
+        samp: numpy.ndarray shape=(2,) dtype=float
+            row and column sampling rates (sx, sy)
+        flt_size: float
+            filter size (HWHM) in physical units
+        smoothness: float
+            edge smoothness of the kernel in physical units
+        anisotropy: float
+            kernel anisotropy relative to flt_size
+        orientation: float
+            anisotropy orientation of large axis to rows, ]-pi, pi]
+    
+    Return:
+        kernel: numpy.ndarray shape=(nrows, ncolumns), dtype=float
+    '''
+    srcsz = np.abs(flt_size)
+    kernel = np.zeros((ndim[0], ndim[1]), dtype=float)
+    ndim2 = np.array([ndim[0] >> 1, ndim[1] >> 1])
+    apert.aperture_a_grid(kernel,ndim2.astype(float),np.array([[samp[0],0.],[0.,samp[1]]]),np.array([0.,0.]),srcsz,smoothness,anisotropy,orientation)
+    kernel[...] = np.roll(kernel, shift = ndim2, axis = (0,1))
+    return kernel
+
