@@ -17,7 +17,7 @@ import emilys.optics.aperture as apert
 @jit # compilation decorator, do this, if you intend to call the function several timed
 def bwl_gaussian(shape=None, size=0.):
     '''
-    Calculates a bandwidth limiting kernel of Gausian shape with
+    Calculates a bandwidth limiting kernel of Gaussian shape with
     given size in pixels. The kernel is returned in the original
     space of the image and is normalized to a total of 1.
 

@@ -14,6 +14,26 @@ published under the GNU General Publishing License, version 3
 from numba import jit # include compilation support
 import numpy as np # include numeric functions
 # %%
+def image_load(str_file_name, nx, ny, datatype):
+    '''
+    Loads data from a file and reshapes to an image of ny rows and row length nx.
+    '''
+    img0 = np.fromfile(str_file_name, dtype=datatype).reshape((ny,nx))
+    return img0
+# %%
+def image_diffractogram(image):
+    '''
+    Returns the diffractogram I(q)**2 of an image
+    '''
+    ndim = image.shape
+    assert len(ndim)==2, 'this is for 2d images only'
+    ndim2 = np.array([ndim[0]>>1,ndim[1]>>1]) # get nyquist index
+    imgft = np.fft.fft2(image) / (ndim[0] * ndim[1]) # fourier transform
+    ftpowsca = ndim[0] * ndim[1]
+    dif0 = (imgft.real**2 + imgft.imag**2) * ftpowsca # absolute square
+    dif1 = np.roll(dif0, shift = ndim2, axis = (0,1)) # put dc on [ny/2,nx/2]
+    return dif1
+# %%
 def image_at_nn(image, pos):
     '''
 
