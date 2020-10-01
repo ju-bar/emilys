@@ -171,6 +171,65 @@ def polar_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((
         for i in range(0, num_phi):
             if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
     return image_out
+# # %%
+# @jit
+# def polar_transform_projector(nx, ny, ax, ay, nr, np, p0, rng_r, rng_p):
+#     '''
+    
+#     Calculates a projection matrix from a recangular non-isotropic space grid to a polar grid.
+
+#     Parameters:
+#         nx : int
+#             number of grid points along x (fast dimension)
+#         ny : int
+#             number of grid points along y (slow dimension)
+#         ax : float
+#             total grid size along x (physical unit)
+#         ay : float
+#             total grid size along y (physical unit)
+#         nr : int
+#             number of radial output samples (fast dimension)
+#         np : int
+#             number of azimuthal output samples (slow dimension)
+#         p0 : [float,float]
+#             position of the pole in the source array (x,y) (physical unit)
+#         rng_r : [float,float]
+#             radial range of the output (physical unit)
+#         rng_p : [float,float]
+#             azimuthal range of the output (radians)
+
+#     Returns:
+#         An array of dimension (ny, nx, 2) which assigns a tuple [ir, ip] of the
+#         polar output to each pixel [iy, ix] of the cartesian input. 
+    
+#     Remarks:
+#         The output projector p is used in the following way with in input a of
+#         shape (ny, nx) and an output b of shape (nr, np):
+#         for j in range(0,ny):
+#             for i in range(0,nx):
+#                 ir = p[j,i,0]
+#                 ip = p[j,i,1]
+#                 if (ir >= 0 and ip >= 0):
+#                     b[ir,ip] += a[j,i]
+
+#     '''
+#     p = np.zeros((ny,nx,2), dytpe=np.int32) # projector matrix init (iy,ix) -> (ir,ip)
+#     p -= 1 # init with -1
+#     sy = ay / ny
+#     sx = ax / nx
+#     sr = (rng_r[1] - rng_r[0]) / nr
+#     sp = (rng_p[1] - rng_p[0]) / np
+#     for j in range(0, ny):
+#         dy = sy * j - p0[1] # y distance to pole
+#         dy2 = dy**2
+#         for i in range(0, nx):
+#             dx = sx * i - p0[0] # x distance to pole
+#             dx2 = dx**2
+#             r = np.sqrt(dx2 + dy2)
+#             p = np.arctan(dy, dx)
+#             ir = np.round((r - r0) / sr)
+#             ip = np.round()
+#     return p
 # %%
 @jit
 def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0.,2. * np.pi)), x0 = 0., x1 = 1., x2 = 0., x3 = 0.):

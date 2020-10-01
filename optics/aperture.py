@@ -272,3 +272,10 @@ def aperture_dist3_grid(arr, p0=np.array([0.,0.]),
             arr[j,i] = aperture_dist3(q, q0, qlim, qsmt, qdist)
     return 0
 #%%
+@jit
+def hann(n):
+    '''
+    Returns a 1d preset with a Hann window.
+    '''
+    return np.sin(np.pi*np.arange(0,n)/n)**2
+
