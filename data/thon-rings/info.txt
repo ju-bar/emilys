@@ -1,0 +1,5 @@
+amorphous carbon
+underfocus of about -475 nm
+512 x 512 x uint16
+0.135355 nm / pixel
+1.99 s / image
