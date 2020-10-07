@@ -13,7 +13,7 @@ published under the GNU General Publishing License, version 3
 # %%
 from numba import jit # include compilation support
 import numpy as np
-from emilys.image.polar import polar_resample, polar_radpol3_transform
+from emilys.image.polar import polar_resample
 from emilys.numerics.linsearch import linsrch_minloc1
 from emilys.image.kernels import filter_normal_iso_2d, filter_normal_2d, filter_exp4_2d
 from scipy.optimize import curve_fit
