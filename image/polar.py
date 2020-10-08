@@ -15,7 +15,6 @@ from numba import jit # include compilation support
 import numpy as np # include numeric functions
 import emilys.image.imagedata as aimg # include image access routines
 # %%
-@jit
 def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0.,2. * np.pi)), ipol = 1):
     '''
 
@@ -72,8 +71,8 @@ def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0
         for ip in range(0, num_phi): # loop over azimuth
             p = p0 + (p1 - p0) * ip / num_phi# azimuthal coordinate
             pos = pole + r * np.array([np.cos(p), np.sin(p)])
-            if (pos[0] < 0. or pos[0] > -1.+nx or pos[1] < 0. or pos[1] > -1.+ny): continue
-            image_out[ir,ip] = aimg.image_at(image, pos, ipol)
+            if ((pos[0] >= 0.) and (pos[0] <= -1.+nx) and (pos[1] >= 0.) and (pos[1] <= -1.+ny)):
+                image_out[ir,ip] = aimg.image_at(image, pos, ipol)
     return image_out
 # %%
 @jit
