@@ -15,12 +15,8 @@ from numba import jit # include compilation support
 import numpy as np # include numeric functions
 import emilys.image.imagedata as aimg # include image access routines
 # %%
-<<<<<<< HEAD
-def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0.,2. * np.pi)), ipol = 1):
-=======
 #@jit
 def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np.pi], ipol = 1):
->>>>>>> 9b3702e1f836e9e501614180f617cb7554053dda
     '''
 
     Transforms a 2D image to new grid in polar representation using a re-binning algorithm.
@@ -76,11 +72,7 @@ def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np
         for ip in range(0, num_phi): # loop over azimuth
             p = p0 + (p1 - p0) * ip / num_phi# azimuthal coordinate
             pos = pole + r * np.array([np.cos(p), np.sin(p)])
-<<<<<<< HEAD
-            if ((pos[0] >= 0.) and (pos[0] <= -1.+nx) and (pos[1] >= 0.) and (pos[1] <= -1.+ny)):
-=======
             if ((pos[0] >= 0) and (pos[0] <= nx-1) and (pos[1] >= 0) and (pos[1] <= ny-1)):
->>>>>>> 9b3702e1f836e9e501614180f617cb7554053dda
                 image_out[ir,ip] = aimg.image_at(image, pos, ipol)
     return image_out
 # %%
