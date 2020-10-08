@@ -186,7 +186,7 @@ def measure_fs_lf(lf_dif, samp_q, q_rng, tilt, lamb):
     qvals = np.arange(0,nrad) * (q_rng[1] - q_rng[0]) / nrad + q_rng[0] # set the radial (q) values
     lprm = np.zeros((nrad, 4)) # prepare array to store fit results for all rings
     lcov = np.zeros((nrad, 4, 4)) # prepare array to store covariance matrix for all rings
-    ldel = np.zeros((nrad, 2)) # prepare array to store focus spread and its error for each ring
+    ldel = np.zeros((nrad, 2)) # prepare array storing focus spread and its error for each ring
     for irow in range(0, nrad): # loop over all rings
         yvals = apol[irow] # get values on current ring
         ymin = np.amin(yvals) # minimum
@@ -199,6 +199,11 @@ def measure_fs_lf(lf_dif, samp_q, q_rng, tilt, lamb):
         delta = delta_of_kappa(popt[3], qvals[irow], t_mod, lamb) # calculate focus spread
         ldel[irow,0] = delta # store focus spread
         ldel[irow,1] = 0.25 * delta**2 * pcov[3,3] / popt[3]**2 # variance propagation from kappa
+    m_phi = np.mean(lprm[:,0]) # mean tilt orientation
+    v_phi = np.mean(lcov[:,0,0]) # tilt orientation variance
+    if (np.abs(m_phi - t_phi) > 2.*np.sqrt(v_phi)):
+        print('Detected tilt orientation:', m_phi, 'rad')
+        print('   input tilt orientation:', t_phi, 'rad')
     m_del = np.mean(ldel[:,0]) # mean delta
     v_del_in = np.mean(ldel[:,1]) # mean variance from fits
     v_del_ex = np.var(ldel[:,0]) # variance over rings
