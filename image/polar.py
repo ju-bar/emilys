@@ -121,7 +121,7 @@ def polar_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((
     r1 = rng_rad[1]
     p0 = rng_phi[0]
     p1 = rng_phi[1]
-    norm_out = np.zeros((num_rad,num_phi)) # polar bin population
+    #norm_out = np.zeros((num_rad,num_phi)) # polar bin population
     image_out = np.zeros((num_rad,num_phi)) # polar data
     check_phi = 0
     delta_p = p1 - p0 # input azimuth range
@@ -164,12 +164,12 @@ def polar_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((
             jp = int(np.round(ipr * num_phi)) # round to next azimuthal bin
             #print("i =",i,", j =",j,", r =",ir,", p =", ip,", jr =",jr,", jp =",jp)
             if (jr >= 0 and jr < num_rad and jp >= 0 and jp < num_phi):
-                norm_out[jr,jp] += 1.
+                #norm_out[jr,jp] += 1.
                 image_out[jr,jp] += image[j,i]
-    # renormalize the output
-    for j in range(0, num_rad):
-        for i in range(0, num_phi):
-            if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
+    ## renormalize the output, removed (2020-10-13 JB)
+    #for j in range(0, num_rad):
+    #    for i in range(0, num_phi):
+    #        if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
     return image_out
 # # %%
 # @jit
@@ -283,7 +283,7 @@ def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np
     xl1 = x0 + x1 * r1 + x2 * r1**2 + x3 * r1**3 # upper radial limit
     p0 = rng_phi[0]
     p1 = rng_phi[1]
-    norm_out = np.zeros((num_rad,num_phi)) # polar bin population
+    # norm_out = np.zeros((num_rad,num_phi)) # polar bin population
     image_out = np.zeros((num_rad,num_phi)) # polar data
     check_phi = 0
     delta_p = p1 - p0 # input azimuth range
@@ -327,10 +327,10 @@ def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np
             jp = int(ipr * num_phi)
             #print("i =",i,", j =",j,", r =",ir,", p =", ip,", jr =",jr,", jp =",jp)
             if (jr >= 0 and jr < num_rad and jp >= 0 and jp < num_phi):
-                norm_out[jr,jp] += 1.
+                # norm_out[jr,jp] += 1.
                 image_out[jr,jp] += image[j,i]
-    # renormalize the output
-    for j in range(0, num_rad):
-        for i in range(0, num_phi):
-            if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
+    # renormalize the output # removed (2020-10-13 JB)
+    #for j in range(0, num_rad):
+    #    for i in range(0, num_phi):
+    #        if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
     return image_out

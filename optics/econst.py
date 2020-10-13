@@ -45,3 +45,9 @@ def ht2wl(ht):
     Calculates the electron wavelength in nm from the kinetic energy (ht) in keV
     '''
     return EL_WLKEV / np.sqrt(ht * (ht + 2. * EL_E0KEV))
+
+def relcor(ekv):
+    '''
+    Calculates the relativistic correction factor gamma for electrons of energy ekin [keV]
+    '''
+    return (EL_E0KEV + ekv) / EL_E0KEV
