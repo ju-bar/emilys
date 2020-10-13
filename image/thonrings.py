@@ -42,7 +42,7 @@ def lf_component(diffractogram):
     ndim2 = np.array([ndim[0]>>1,ndim[1]>>1]) # get nyquist index
     nxy = 0.5 * (ndim2[0] + ndim2[1])
     adifft = np.fft.ifft2(diffractogram)
-    acf0 = np.abs(adifft)  # calculate the auto-correlation function
+    acf0 = np.abs(adifft)  # amplitudes of the ft
     acf1 = np.roll(acf0, shift = ndim2, axis = (0,1)) # recenter the acf
     # extract the polar transform of the central part
     crng = 1 + int(0.1 * nxy) # central range limiting low-frequency search
