@@ -28,8 +28,8 @@ def image_diffractogram(image):
     ndim = image.shape
     assert len(ndim)==2, 'this is for 2d images only'
     ndim2 = np.array([ndim[0]>>1,ndim[1]>>1]) # get nyquist index
-    imgft = np.fft.fft2(image) / (ndim[0] * ndim[1]) # fourier transform
-    ftpowsca = ndim[0] * ndim[1]
+    imgft = np.fft.fft2(image) # fourier transform
+    ftpowsca = 1. / (ndim[0] * ndim[1])
     dif0 = (imgft.real**2 + imgft.imag**2) * ftpowsca # absolute square
     dif1 = np.roll(dif0, shift = ndim2, axis = (0,1)) # put dc on [ny/2,nx/2]
     return dif1
