@@ -317,14 +317,14 @@ def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np
             ir = np.sqrt(ir2)
             if (ir < r0 or ir > r1): continue # outside radial range, skip pixel
             ip = p0
-            if (ir > 0.): # 
+            if (ir > 0.): # no angle at r = 0
                 ip = np.arctan2(dy,dx) % tpi # pixel azimuth -> into range [0, 2 pi]
                 ipr = (ip - p0) / delta_p # azimuth relative to rng_phi - 0 ... 1
                 if (check_phi): # segment
                     if (ipr < 0. or ipr > 1.): continue # outside azimuthal range, skip pixel
             x = x0 + x1 * ir + x2 * ir**2 + x3 * ir**3 # corresponding output grid coordinate
-            jr = int((x - xl0) / (xl1 - xl0) * num_rad) # round to next radial bin
-            jp = int(ipr * num_phi)
+            jr = int(np.round((x - xl0) / (xl1 - xl0) * num_rad)) # round to next radial bin
+            jp = int(np.round(ipr * num_phi)) # round to next azimuthal bin
             #print("i =",i,", j =",j,", r =",ir,", p =", ip,", jr =",jr,", jp =",jp)
             if (jr >= 0 and jr < num_rad and jp >= 0 and jp < num_phi):
                 # norm_out[jr,jp] += 1.
