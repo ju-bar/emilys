@@ -214,3 +214,39 @@ def data_convolute_2d(sfile_fmt, ix, iy, ndata, krn, thr_krn):
                 bpat = np.fromfile(sfile_in, dtype=np.float32)
                 apat += bpat * krn[ly,lx]
     return apat
+# %%
+def convolute_2d(data, kernel):
+    """
+
+    Convolutes the 2d array data by the 2d kernel.
+
+    Parameters
+    ----------
+        data : numpy.ndarray
+            2-dimensional input data
+        kernel : numpy.ndarray
+            2-dimensional input kernel
+
+    """
+    nd = data.shape
+    nk = kernel.shape
+    assert len(nd)==2, 'input data must have two dimensions'
+    assert len(nk)==2, 'input kernel must have two dimensions'
+    assert (nd[0]==nk[0] and nd[1]==nk[1]), 'input data and kernel must be of identical size'
+    data_ft = np.fft.fft2(data)
+    kernel_ft = np.fft.fft2(kernel)
+    return np.fft.ifft2(data_ft * kernel_ft.conjugate())
+# %%
+def convolute_img_ser(img_ser, kernel):
+    nd = img_ser.shape
+    nk = kernel.shape
+    assert (len(nd)==2 or len(nd)==3), 'input data must have two or three dimensions'
+    assert len(nk)==2, 'input kernel must have two dimensions'
+    if (len(nd)==2): return convolute_2d(img_ser, kernel).real
+    assert (nd[1]==nk[0] and nd[2]==nk[1]), 'input images and kernel must be of identical size'
+    kernel_ft = np.fft.fft2(kernel)
+    img_out = img_ser.copy()
+    for iimg in range(0, nd[0]):
+        data_ft = np.fft.fft2(img_ser[iimg])
+        img_out[iimg,:,:] = np.fft.ifft2(data_ft * kernel_ft.conjugate())
+    return img_out
