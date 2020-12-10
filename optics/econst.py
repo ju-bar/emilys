@@ -51,3 +51,44 @@ def relcor(ekv):
     Calculates the relativistic correction factor gamma for electrons of energy ekin [keV]
     '''
     return (EL_E0KEV + ekv) / EL_E0KEV
+
+def k2theta(e0, q, de=0.):
+    """
+
+    Returns the scattering angle theta for scattering with momentum transfer hbar*q.
+    An energy loss de>0 can be specified to calculate scattering angles for inelastic scattering.
+
+    Parameters
+    ----------
+        e0 : float
+            electron kinetic energy in eV
+        q : float
+            length of the vector of momentum transfer devided by hbar in 1/nm units
+        de : float
+            electron energy loss in eV
+
+    Return
+    ------
+        theta : float
+            scattering angle in radians [0, pi]
+    """
+    theta = 0.
+    if (np.abs(de) >= e0):
+        print("Warning: energy not conserved, de is larger or equal e0.")
+        return theta
+    k0 = 1. / ht2wl(e0) # electron wave number (total momentum)
+    kp = 1. / ht2wl(e0-np.abs(de)) # electron wave number after scattering (by conservation of energy)
+    if (q < k0-kp):
+        print("Warning: momentum not conserved, q is smaller than k0 - k' = {:.5E} ".format(k0-kp))
+        return theta
+    if (q > k0+kp):
+        print("Warning: momentum not conserved, q is larger than k0 + k' = {:.5E} ".format(k0+kp))
+        return np.pi
+    # draw the triangle of k0 and kp enclosing theta and q opposite to theta
+    # apply the law of cosine
+    # q**2 = k0**2 + kp**2 - 2 * k0 * kp * cos(theta)
+    # solve for cos(theta)
+    costheta = (k0**2 + kp**2 - q**2) / (2 * k0 * kp)
+    # invert
+    theta = np.arccos(costheta)
+    return theta
