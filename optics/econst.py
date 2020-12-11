@@ -65,7 +65,7 @@ def k2theta(e0, q, de=0.):
         q : float
             length of the vector of momentum transfer devided by hbar in 1/nm units
         de : float
-            electron energy loss in eV
+            electron energy loss in eV, default: 0
 
     Return
     ------
@@ -76,8 +76,8 @@ def k2theta(e0, q, de=0.):
     if (np.abs(de) >= e0):
         print("Warning: energy not conserved, de is larger or equal e0.")
         return theta
-    k0 = 1. / ht2wl(e0) # electron wave number (total momentum)
-    kp = 1. / ht2wl(e0-np.abs(de)) # electron wave number after scattering (by conservation of energy)
+    k0 = 1. / ht2wl(e0 * 0.001) # electron wave number (total momentum)
+    kp = 1. / ht2wl((e0-np.abs(de)) * 0.001) # electron wave number after scattering (by conservation of energy)
     if (q < k0-kp):
         print("Warning: momentum not conserved, q is smaller than k0 - k' = {:.5E} ".format(k0-kp))
         return theta
@@ -91,4 +91,27 @@ def k2theta(e0, q, de=0.):
     costheta = (k0**2 + kp**2 - q**2) / (2 * k0 * kp)
     # invert
     theta = np.arccos(costheta)
+    return theta
+
+def kperp2theta(e0, qperp):
+    """
+
+    Returns the scattering angle theta for a given perpendicular component of the scattering vector.
+    This assumes elastic forward scattering (0 <= theta < pi/2)
+
+    Parameters
+    ----------
+        e0 : float
+            electron kinetic energy in eV
+        qperp : float
+            perpendicular component of the scattering vector in 1/nm units
+
+    Return
+    ------
+        theta : float
+            scattering angle in radians [0, pi]
+    """
+    theta = 0.
+    k0 = 1. / ht2wl(e0 * 0.001) # electron wave number (total momentum)
+    theta = np.arcsin(qperp / k0)
     return theta
