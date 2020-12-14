@@ -480,3 +480,43 @@ def filter_sigmoid_2d(ndim, samp, flt_size, smoothness=0., anisotropy=0., orient
     apert.aperture_a_grid(kernel,ndim2.astype(float),np.array([[samp[0],0.],[0.,samp[1]]]),np.array([0.,0.]),srcsz,smoothness,anisotropy,orientation)
     kernel[...] = np.roll(kernel, shift = ndim2, axis = (0,1))
     return kernel
+# %%
+def normal_1d(n, p0, sigma):
+    """
+
+    Returns a 1d array of length n with a normal distribution
+    of r.m.s. width sigma centered a position p0.
+
+    Parameters
+    ----------
+        n : int
+            number of samples of the 1d output
+        p0 : float
+            center position of the normal distribution
+        sigma : float
+            r.m.s. width of the distribution
+
+    Returns
+    -------
+        numpy.ndarray of length n
+
+    Remarks
+    -------
+        periodic wrap around is assumed
+
+    """
+    assert n > 1, 'n must be larger than one'
+    assert np.abs(sigma) > 0, 'sigma must be non-zero'
+    pf = -0.5 / sigma**2
+    n2 = n>>1 # index of the center pixel
+    l_kern = np.zeros(n)
+    n0 = int(np.floor(p0))
+    p0_frac = p0 - n0
+    sum_kern = 0.
+    for i in range(0, n):
+        x = 1. * (i - n2) + p0_frac
+        v_kern = np.exp(pf * x**2)
+        l_kern[i] = v_kern
+        sum_kern += v_kern
+    assert sum_kern > 0, 'intermediate kernel power is zero'
+    return np.roll(l_kern / sum_kern, n0-n2)

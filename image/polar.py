@@ -19,7 +19,7 @@ import emilys.image.imagedata as aimg # include image access routines
 def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np.pi], ipol = 1):
     '''
 
-    Transforms a 2D image to new grid in polar representation using a re-binning algorithm.
+    Transforms a 2D image to new grid in polar representation using interpolation.
 
     Parameters:
         image : numpy.array of 2 dimensions
@@ -46,6 +46,7 @@ def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np
     Remarks:
         May produce strange signal with noise data and of the polar sampling is fine
         compared to the input grid.
+        This assumes isotropic sampling of the input.
 
     '''
     nd = image.shape
@@ -334,3 +335,50 @@ def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np
     #    for i in range(0, num_phi):
     #        if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
     return image_out
+# %%
+def radial_bin_mask(ndim, step, pix_pole, nr, radial_range=None):
+    """
+
+    Creates a mask linking image pixels to radial bins.
+
+    Parameters
+    ----------
+        ndim : array of length 2 and type int
+            dimensions of input images (num_rows, num_columns)
+        step : array of length 2 and type float
+            step sizes of input image (step_rows, step_columns)
+        pix_pole : array of length 2 and type float
+            pixel position of the pole from measuring radius (row, column)
+        nr : int
+            number of radial samples
+        radial_range : array of lenth 2 and type float
+            radial range, if None a default [0, nr] is used
+
+    Returns
+    -------
+        array dimension ndim and type int containing indices of
+        the radial 1d array linked to each input image
+
+    """
+    #
+    msk = np.zeros(ndim, dtype=int)
+    #
+    if radial_range is None:
+        r0 = 0.
+        r1 = 1.0 * nr
+    else:
+        r0 = radial_range[0]
+        r1 = radial_range[1]
+    #
+    for i_y in range(0, ndim[0]):
+        y = step[0] * (i_y - pix_pole[0])
+        for i_x in range(0, ndim[1]):
+            x = step[1] * (i_x - pix_pole[1])
+            r = np.sqrt(x**2 + y**2)
+            i_r = round((r - r0) / (r1 - r0) * nr)
+            if (i_r >= 0) and (i_r < nr):
+                msk[i_y,i_x] = i_r
+            else:
+                msk[i_y,i_x] = -1
+    #
+    return msk
