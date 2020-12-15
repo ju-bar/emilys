@@ -8,9 +8,9 @@ Dec 2020
 
 ## Installation
 
-To install, copy this source tree to some place, where your Python environment is able to find it.
+If you want to play in the code, copy this source tree to some place, where your Python environment is able to find it.
 
-A package installer is in preparation to install via
+If you just want to use it, install via 
 ```
 pip install emilys
 ```
