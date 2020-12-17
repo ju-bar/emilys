@@ -28,7 +28,7 @@ If you just want to use it, install via
 packaging of some initial functions, uploaded to PyPi
 * Version 0.1.1:
 added diffraction pattern data for STO_110_* with json file containing meta data, 
-modified image.polar.polar_resample
-renamed and modiefied image.polar.polar_transform to image.polar.polar_rebin
-added a test Jupyter notebook showing how to use polar_resample from a non-isotropic input grid
+modified image.polar.polar_resample,
+renamed and modiefied image.polar.polar_transform to image.polar.polar_rebin,
+added a test Jupyter notebook showing how to use polar_resample from a non-isotropic input grid,
 updated PiPy upload with install requirements
