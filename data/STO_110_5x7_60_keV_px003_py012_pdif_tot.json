@@ -1,0 +1,49 @@
+{
+    "file" : "STO_110_5x7_60_keV_px003_py012_pdif_tot.dat",
+    "dim" : [9, 375, 375],
+    "dtype" : "<f4",
+    "source" : "sim",
+    "sim" : {
+        "program" : "drprobe_clt",
+        "date" : "2020-12-15",
+        "params" : {
+            "mode" : "STEM",
+            "E0" : 60000.0,
+            "alpha" : 0.02,
+            "structure_file" : "STO_110_5x7.cif",
+            "super_cell" : {
+                "a" : 2.7584248,
+                "b" : 2.7306999,
+                "c" : 0.5516850
+            },
+            "grid" : {
+                "sampling" : [4, 375, 375]
+            },
+            "scattering" : {
+                "debye_waller" : false,
+                "phonons" : true,
+                "ionization" : false,
+                "plasmons" : false,
+                "absorptive" : true
+            },
+            "phonons" : {
+                "num_config" : 100
+            },
+            "scan" : {
+                "dim" : [16, 24],
+                "size" : [0.3901000, 0.5516850],
+                "offset" : [0.0, 0.0],
+                "rotation" : 0.0,
+                "num_passes" : 400
+            },
+            "output" : {
+                "type" : "diffraction_pattern",
+                "origin" : [0, 0, 0],
+                "channel" : "total",
+                "step_z" : 64,
+                "max_z" : 512,
+                "scan_pos" : [12, 3]
+            }
+        }
+    }
+}
