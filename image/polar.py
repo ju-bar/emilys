@@ -10,16 +10,125 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-# %%
-from numba import jit # include compilation support
+#
+import numba # include compilation support
 import numpy as np # include numeric functions
 import emilys.image.imagedata as aimg # include image access routines
-# %%
-@jit
+from emilys.numerics.roots import root_poly_2 # include root finder for square equations
+from timeit import default_timer as timer
+#
+def to_polar_2d(x):
+    """
+
+    For input tuples x = [x1,x2] calculates radius and azimuth [r,phi]
+    with r = (x1**2 + x2**2)**0.5 and phi = arctan2(x2,x1)
+    
+    Parameters
+    ----------
+        x : tuple of floats
+            cartesian x1, x2 coordinates
+    
+    Returns
+    -------
+        rp : tuple of floats
+            [r, phi] 
+
+    """
+    return np.array([np.sqrt(x[0]**2 + x[1]**2), np.arctan2(x[1], x[0])])
+#
+def from_polar_2d(r, phi, x, y):
+    """
+
+    For input tuples [r,phi] calculates cartesian positions [x1,x2]
+    with x1 = r * cos(phi), x2 = r * sin(phi)
+    
+    Parameters
+    ----------
+        r : float, input
+            polar radius
+        phi : float, input
+            polar aziumth
+        x : float, output
+            cartesian x coordinate
+        y : float, output
+            cartesian y coordinate
+    
+    """
+    x = r * np.cos(phi)
+    y = r * np.sin(phi)
+#
+@numba.jit
+def polar_resample_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp, ipol):
+    """
+
+    Polar resampling algorithm with simplified interface for the numba JIT compiler.
+    
+    Parameters
+    ----------
+        img_xy : numpy.ndarray(shape=(ny,nx),dtype=float)
+            input image
+        x0 : float
+            x-origin of the cartesian coordinates in input grid pixels
+        y0 : float
+            y-origin of the cartesian coordinates in input grid pixels
+        dx : float
+            x-sampling rate of the cartesian coordinates in input grid pixels
+        dy : float
+            y-sampling rate of the cartesian coordinates in input grid pixels
+        img_pr : numpy.ndarray(shape=(nr,np),dtype=float)
+            output image
+        r0 : float
+            start radius in from the cartesian origin in scaled units
+        p0 : float
+            start azimuth from the cartesian x-axis in radians
+        dr : float
+            step size of the radial axis in the output in scaled units
+        dp : float
+            step size of the azimuth axis in the output in radians
+        ipol : int
+            interpolation switch
+            0 : nearest neighbor
+            1 : bi-linear
+    """
+    nyx = img_xy.shape
+    #print("polar_resamp_core: ndim1:", nyx)
+    nrp = img_pr.shape
+    #print("polar_resamp_core: ndim2:", nrp)
+    # initialize
+    x_0 = x0 * dx
+    y_0 = y0 * dy
+    # loop over polar coordinates
+    for ir in range(0, nrp[0]): # loop over radii
+        r = r0 + dr * ir # radial coordinate
+        for ip in range(0, nrp[1]): # loop over azimuth
+            p = p0 + dp * ip # azimuthal coordinate
+            ix = (x_0 + r * np.cos(p)) / dx # x pixel position on input grid
+            iy = (y_0 + r * np.sin(p)) / dy # y pixel position on input grid
+            if ((ix >= 0.) and (ix <= nyx[1]-1.) and (iy >= 0.) and (iy <= nyx[0]-1.)):
+                pos = np.array([ix, iy])
+                # img_pr[ir,ip] = aimg.image_at(img_xy, pos, ipol) # get from input image by interpolation
+                if (ipol == 1): # bilinear interpolation
+                    il = int(np.floor(pos[0])) # x
+                    ih = il + 1
+                    fi = pos[0] - il
+                    jl = int(np.floor(pos[1])) # y
+                    jh = jl + 1
+                    fj = pos[1] - jl
+                    v  = img_xy[jl,il] * (1-fj) * (1-fi)
+                    v += img_xy[jl,ih] * (1-fj) * fi
+                    v += img_xy[jh,il] * fj * (1-fi)
+                    v += img_xy[jh,ih] * fj * fi
+                    img_pr[ir,ip] = v
+                else: # fall-back to nearest neighbor interpolation
+                    jx = int(np.round(ix))
+                    jy = int(np.round(iy))
+                    img_pr[ir,ip] = img_xy[jy,jx]
+    return img_pr
+#
 def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np.pi], image_scale = [1., 1.], ipol = 1):
     """
 
-    Transforms a 2D image to a polar grid using interpolation.
+    Transforms 2D images to polar grids using interpolation.
 
     Parameters
     ----------
@@ -61,70 +170,139 @@ def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np
         * Due to the non-isotropic sampling of a polar system, the norm of the
           input will not be conserved in the output. If this is important, you
           may want to try a re-binning algorithm such as in polar_rebin below.
-        * The routine as a @jit decorator and may require more time for compiling
-          during the first call.
+        * The routine uses an interpolation wth @jit decorator. This may require
+          more time for compiling during the first call.
 
     """
     nd = image.shape
-    # check input
-    assert len(nd)==2, 'this works only for 2d arrays as input'
+    assert len(nd)>=2, 'need at least a 2d array'
+    ld = len(nd)
+    nx = nd[ld-1]
+    ny = nd[ld-2]
+    nimg = int(image.size / nx / ny)
+    img = image.reshape(nimg, ny, nx) # reshape to a sequence of 2d images
     assert num_rad>=1, 'number of radial samples must be at least 1'
     assert num_phi>=1, 'number of azimuthal samples must be at least 1'
+    npol = int(np.array(pole).size / 2)
+    p_org = np.array(pole).reshape(npol,2) # sequence of pole positions
+    assert (npol==nimg or npol==1), 'invalid number of pole positions'
     assert len(rng_rad)==2, 'invalid length of radial range input'
+    assert np.abs(rng_rad[1])>0., 'invalid radial range parameter'
     assert len(rng_phi)==2, 'invalid length of azimuthal range input'
-    assert (rng_rad[0]<rng_rad[1] and rng_rad[0]>=0.), 'invalid radial range parameter'
+    assert np.abs(rng_phi[1])>0., 'invalid azimuth range parameter'
     assert len(image_scale)>=2, 'invalid length of input image scale parameter'
     assert (np.abs(image_scale[0])>0. and np.abs(image_scale[1])>0.), 'invalid input image scale'
-    assert (ipol>=0 and ipol<=1), 'invalid interpolation switch (0,1)'
+    assert (ipol>=0 and ipol<=1), 'interpolation switch {:d} not supported'.format(ipol)
     # initialize
-    ny = nd[0] # number of input rows (y)
-    nx = nd[1] # number of input columns (x)
-    r0 = rng_rad[0] # radial range start
-    r1 = rng_rad[1] # radial range stop
-    p0 = rng_phi[0] # azimuth range start
-    p1 = rng_phi[1] # azimuth range stop
-    if (p0 == p1): p1 = p0 + 2.*np.pi # same phi -> full circle
-    image_out = np.zeros((num_rad,num_phi)) # polar data initialized to zero
-    x0 = pole * image_scale # position of the pole in physical units of the input grid
-    # loop over polar coordinates
-    for ir in range(0, num_rad): # loop over radii
-        r = r0 + (r1 - r0) * ir / num_rad # radial coordinate
-        for ip in range(0, num_phi): # loop over azimuth
-            p = p0 + (p1 - p0) * ip / num_phi # azimuthal coordinate
-            x = x0 + r * np.array([np.cos(p), np.sin(p)]) # position on input grid scale
-            pos = x / image_scale # position 
-            if ((pos[0] >= 0) and (pos[0] <= nx-1) and (pos[1] >= 0) and (pos[1] <= ny-1)):
-                image_out[ir,ip] = aimg.image_at(image, pos, ipol) # get from input image by interpolation
-    return image_out
-# %%
-@jit
-def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np.pi], image_scale = [1., 1.]):
+    r_0 = rng_rad[0]
+    d_r = rng_rad[1] / num_rad
+    p_0 = rng_phi[0]
+    d_p = rng_phi[1] / num_phi
+    d_x = image_scale[0]
+    d_y = image_scale[1]
+    image_out = np.zeros((nimg,num_rad,num_phi)) # polar data
+    x_0 = p_org[0,0]
+    y_0 = p_org[0,1]
+    for i in range(nimg):
+        if (npol>1):
+            x_0 = p_org[i,0]
+            y_0 = p_org[i,1]
+        polar_resample_core(img[i,:,:], x_0, y_0, d_x, d_y, image_out[i,:,:], r_0, p_0, d_r, d_p,ipol)
+    nout = np.array(nd).astype(int)
+    nout[ld-2] = num_rad
+    nout[ld-1] = num_phi
+    return image_out.reshape(nout)
+#
+@numba.jit
+def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp):
     """
 
-    Transforms a 2D image to new grid in polar representation using a re-binning algorithm.
+    Polar rebinning algorithm with simplified interface for the numba JIT compiler.
+    
+    Parameters
+    ----------
+        img_xy : numpy.ndarray(shape=(ny,nx),dtype=float)
+            input image
+        x0 : float
+            x-origin of the cartesian coordinates in input grid pixels
+        y0 : float
+            y-origin of the cartesian coordinates in input grid pixels
+        dx : float
+            x-sampling rate of the cartesian coordinates in input grid pixels
+        dy : float
+            y-sampling rate of the cartesian coordinates in input grid pixels
+        img_pr : numpy.ndarray(shape=(nr,np),dtype=float)
+            output image
+        r0 : float
+            start radius in from the cartesian origin in scaled units
+        p0 : float
+            start azimuth from the cartesian x-axis in radians
+        dr : float
+            step size of the radial axis in the output in scaled units
+        dp : float
+            step size of the azimuth axis in the output in radians
+        
+    """
+    tpi = 2. * np.pi
+    nyx = img_xy.shape
+    #print("polar_rebin_core: ndim1:", nyx)
+    nrp = img_pr.shape
+    #print("polar_rebin_core: ndim2:", nrp)
+    r1 = r0 + nrp[0] * dr
+    p1 = p0 + nrp[1] * dp
+    #print("polar_rebin_core: radial: ", [r0, r1, dr])
+    #print("polar_rebin_core: azimuth: ", [p0, p1, dp])
+    ix0 = min(nyx[1]-1, max(0, int(np.floor((x0 * dx - r1) / dx)))) # left pixel range clipped to image
+    ix1 = min(nyx[1]-1, max(0, int(np.ceil((x0 * dx + r1) / dx)))) # right pixel range clipped to image
+    iy0 = min(nyx[0]-1, max(0, int(np.floor((y0 * dy - r1) / dy)))) # bottom pixel range clipped to image
+    iy1 = min(nyx[0]-1, max(0, int(np.ceil((y0 * dy + r1) / dy)))) # top pixel range clipped to image
+    #print("polar_rebin_core: roi:", [[ix0,iy0],[ix1,iy1]])
+    r = 0.
+    phi = 0.
+    for j in range(iy0, iy1+1):
+        y = (j - y0) * dy
+        ysqr = y * y
+        for i in range(ix0, ix1+1):
+            x = (i - x0) * dx
+            r = np.sqrt(x * x + ysqr)
+            if (r < r0 or r > r1): continue # skip pixels out of radial range
+            phi = np.arctan2(y, x)
+            if phi < 0: phi += tpi # bring phi to positive range
+            if (phi < p0 or phi > p1): continue # ot of azimuth range
+            jr = int(np.round((r - r0) / dr)) # round to next radial bin
+            jp = int(np.round((phi - p0) / dp)) # round to next azimuthal bin
+            if (jr >= 0 and jr < nrp[0] and jp >= 0 and jp < nrp[1]):
+                img_pr[jr,jp] += img_xy[j,i]
+#
+def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi], image_scale = [1., 1.]):
+    """
+
+    Transforms a 2D images to new grid in polar representation using a re-binning algorithm.
 
     Parameters:
-        image : numpy.array of 2 dimensions
+        image : numpy.array floats with shape (...,ny,nx)
             data on a regular grid
         num_rad : integer
             number of radial sample
         num_phi : integer
             number of azimuthal samples
-        pole : float array of length 2
-            position (x,y) of the pole in the input image (fractional pixel coordinate)
+        pole : 2d tuples
+            positions (x,y) of the pole in the input image (fractional pixel coordinate)
         rng_rad : float array of length 2
-            radial range in pixels
-        rng_phi :float array of length 2
-            azimuthal range in radian, use only values from the positive interval [0, 2*Pi]!
-            default = np.array((0.,2.*np.pi))
+            radial range start and coverage (r_0, delta_r)
+        rng_phi : float array of length 2
+            azimuthal range start and coverage (phi_0, delta_phi) in radians
+            default = [0., 2.*np.pi]
         image_scale : float array of length 2
             scale (x, y) of the input image in physical units per pixel, e.g. nm/pixel
             default = [1., 1.]
 
     Returns:
-        numpy.array of 2 dimensions, shape (num_rad,num_phi)
+        numpy.array of dimensions, shape (...,num_rad,num_phi)
 
     Remarks:
+        * Can be used to process on the last two dimensions of an array of
+          higher dimensions.
         * Due to the non-isotropic distribution of polar bins, some output bins
           may not receive data, especially around the pole region. If you want
           to avoid this, you may use the routine polar_resample.
@@ -132,88 +310,68 @@ def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np.pi
           on the same scale as the input scale, i.e. the same physical scale unit.
           Also the azimuth argument is assumed to address physical angles, which may
           deviate from angles of a regular grid.
-        * The routine as a @jit decorator and may require more time for compiling
-          during the first call.
+        * Calls a subroutine with @jit decorator. This does require longer excecution on
+          the first call for run-time compiling, but will be faster afterwards.
         
     """
     nd = image.shape
-    # check input
-    assert len(nd)==2, 'this works only for 2d arrays as input'
+    assert len(nd)>=2, 'need at least a 2d array'
+    ld = len(nd)
+    nx = nd[ld-1]
+    ny = nd[ld-2]
+    nimg = int(image.size / nx / ny)
+    img = image.reshape(nimg, ny, nx) # reshape to a sequence of 2d images
     assert num_rad>=1, 'number of radial samples must be at least 1'
     assert num_phi>=1, 'number of azimuthal samples must be at least 1'
+    npol = int(np.array(pole).size / 2)
+    p_org = np.array(pole).reshape(npol,2) # sequence of pole positions
+    assert (npol==nimg or npol==1), 'invalid number of pole positions'
     assert len(rng_rad)==2, 'invalid length of radial range input'
+    assert np.abs(rng_rad[1])>0., 'invalid radial range parameter'
     assert len(rng_phi)==2, 'invalid length of azimuthal range input'
-    assert (rng_rad[0]<rng_rad[1] and rng_rad[0]>=0.), 'invalid radial range parameter'
+    assert np.abs(rng_phi[1])>0., 'invalid azimuth range parameter'
     assert len(image_scale)>=2, 'invalid length of input image scale parameter'
     assert (np.abs(image_scale[0])>0. and np.abs(image_scale[1])>0.), 'invalid input image scale'
     # initialize
-    tpi = 2.*np.pi # 2*Pi
-    ny = nd[0]
-    nx = nd[1]
-    r0 = rng_rad[0]
-    r1 = rng_rad[1]
-    p0 = rng_phi[0]
-    p1 = rng_phi[1]
-    x0 = pole * image_scale # position of the pole in physical units of the input grid
-    image_out = np.zeros((num_rad,num_phi)) # polar data
-    check_phi = 0
-    delta_p = p1 - p0 # input azimuth range
-    if (np.abs(delta_p)>=tpi or np.abs(delta_p)==0.): # full circle
-        delta_p = tpi
-    else: # not a full circle
-        check_phi = 1
-    # initialize bounding box around the full outer circle
-    ix0 = np.min([nx-1, np.max([0, int(np.floor((x0[0] - r1)/image_scale[0]))])]) # left pixel range clipped to image
-    ix1 = np.min([nx-1, np.max([0, int(np.ceil((x0[0] + r1)/image_scale[0]))])]) # right pixel range clipped to image
-    iy0 = np.min([ny-1, np.max([0, int(np.floor((x0[1] - r1)/image_scale[1]))])]) # bottom pixel range clipped to image
-    iy1 = np.min([ny-1, np.max([0, int(np.ceil((x0[1] + r1)/image_scale[1]))])]) # top pixel range clipped to image
-    # (complicated idea, re-think here!) if (check_phi == 1) and (delta_p / np.pi < 1.5): # adjust bounding box
-    # accumulate polar samples to polar bins
-    for j in range(iy0, iy1+1):
-        dy = (j - pole[1]) * image_scale[1]
-        dy2 = dy*dy
-        for i in range(ix0, ix1+1):
-            dx = (i - pole[0]) * image_scale[0]
-            ir2 = dx*dx + dy2
-            ir = np.sqrt(ir2)
-            if (ir < r0 or ir > r1): continue # outside radial range, skip pixel
-            ip = p0 # preset azimuth bin index to first index
-            if (ir > 0.): # if r==0 this means, that all pixels will be accumulated by the first azimuth pixel
-                ip = np.arctan2(dy,dx) % tpi # pixel azimuth -> into range [0, 2 pi]
-                ipr = (ip - p0) / delta_p # azimuth relative to rng_phi - 0 ... 1
-                if (check_phi): # segment
-                    if (ipr < 0. or ipr > 1.): continue # outside azimuthal range, skip pixel
-            jr = int(np.round((ir - r0) / (r1 - r0) * num_rad)) # round to next radial bin
-            jp = int(np.round(ipr * num_phi)) # round to next azimuthal bin
-            #print("i =",i,", j =",j,", r =",ir,", p =", ip,", jr =",jr,", jp =",jp)
-            if (jr >= 0 and jr < num_rad and jp >= 0 and jp < num_phi):
-                image_out[jr,jp] += image[j,i]
-    return image_out
-# %%
-@jit
-def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np.array((0.,2. * np.pi)), x0 = 0., x1 = 1., x2 = 0., x3 = 0.):
-    '''
+    r_0 = rng_rad[0]
+    d_r = rng_rad[1] / num_rad
+    p_0 = rng_phi[0]
+    d_p = rng_phi[1] / num_phi
+    d_x = image_scale[0]
+    d_y = image_scale[1]
+    image_out = np.zeros((nimg,num_rad,num_phi)) # polar data
+    x_0 = p_org[0,0]
+    y_0 = p_org[0,1]
+    for i in range(nimg):
+        if (npol>1):
+            x_0 = p_org[i,0]
+            y_0 = p_org[i,1]
+        polar_rebin_core(img[i,:,:], x_0, y_0, d_x, d_y, image_out[i,:,:], r_0, p_0, d_r, d_p)
+    nout = np.array(nd).astype(int)
+    nout[ld-2] = num_rad
+    nout[ld-1] = num_phi
+    return image_out.reshape(nout)
+#
+@numba.jit
+def polar_rebin_rpoly3(img_xy, px0, py0, img_pr, r0, p0, dr, dp, x0, x1, x2, x3):
+    """
 
-    Resamples a 2D image to new grid in polar representation with the radial direction
+    Transforms a 2D image to new grid in polar representation with the radial direction
     sampling on a grid with x = x0 + x1 * r + x2 * r**2 + x3 + r**3, where r is the distance
     to the pole in the input image and x the coordinate of the output image along axis = 0.
-    The resampled x axis will correspond to a finer step size towards outer regions of the
+    The new x axis will correspond to a finer step size towards outer regions of the
     input image causing the respective data to be distributed more sparsely in the output.
+    The transformation is based on a rebinning algorithm, which may lead to empty bins if
+    the output grid has a higher density than the input grid.
 
-    Parameters:
-        image : numpy.array of 2 dimensions
+    Parameters
+    ----------
+        img_xy : numpy.array of 2 dimensions, type float
             data on a regular grid
-        num_rad : integer
-            number of radial sample
-        num_phi : integer
-            number of azimuthal samples
-        pole : numpy.array, size=2
-            position (x,y) of the pole in the input image (fractional pixel coordinate)
-        rng_rad : numpy.array, size=2
-            radial range in pixels
-        rng_phi : numpy.array, size=2
-            azimuthal range in radian, use only values from the positive interval [0, 2*Pi]!
-            default = np.array((0.,2.*np.pi))
+        px0, py0 : float
+            position of the pole in the input image (fractional pixel coordinates)
+        img_pr : numpy.array of 2 dimensions, type float
+            outout polar grid
         x0 : float
             radial sampling offset, default = 0.
         x1 : float
@@ -222,78 +380,46 @@ def polar_radpol3_transform(image, num_rad, num_phi, pole, rng_rad, rng_phi = np
             radial sampling 2nd order coefficient, default = 0.
         x3 : float
             radial sampling 3rd order coefficient, default = 0.
+    
+    Remarks
+    -------
+        * This routine has a @jit decorator. It does require longer excecution on
+          the first call for run-time compiling, but will be faster afterwards.
 
-    '''
-    nd = image.shape
-    # check input
-    assert len(nd)==2, 'this works only for 2d arrays as input'
-    assert num_rad>=1, 'number of radial samples must be at least 1'
-    assert num_phi>=1, 'number of azimuthal samples must be at least 1'
-    assert len(rng_rad)==2, 'invalid length of radial range input'
-    assert len(rng_phi)==2, 'invalid length of azimuthal range input'
-    assert (rng_rad[0]<rng_rad[1] and rng_rad[0]>=0.), 'invalid radial range parameter'
-    # initialize
+    """
+    nyx = img_xy.shape
+    nrp = img_pr.shape
     tpi = 2.*np.pi # 2*Pi
-    ny = nd[0]
-    nx = nd[1]
-    r0 = rng_rad[0]
-    r1 = rng_rad[1]
+    r1 = r0 + nrp[0] * dr
+    p1 = p0 + nrp[1] * dp
     xl0 = x0 + x1 * r0 + x2 * r0**2 + x3 * r0**3 # lower radial limit
     xl1 = x0 + x1 * r1 + x2 * r1**2 + x3 * r1**3 # upper radial limit
-    p0 = rng_phi[0]
-    p1 = rng_phi[1]
-    # norm_out = np.zeros((num_rad,num_phi)) # polar bin population
-    image_out = np.zeros((num_rad,num_phi)) # polar data
-    check_phi = 0
-    delta_p = p1 - p0 # input azimuth range
-    if (np.abs(delta_p)>=tpi or np.abs(delta_p)==0.): # full circle
-        delta_p = tpi
-    else: # not a full circle
-        check_phi = 1
-    # determine bounding box around the annular segment added to the polar transform
-    bx0 = np.min(np.array((r0 * np.cos(p0), r0 * np.cos(p1), r1 * np.cos(p0), r1 * np.cos(p1))) + pole[0]) # left-most corner of segment
-    bx1 = np.max(np.array((r0 * np.cos(p0), r0 * np.cos(p1), r1 * np.cos(p0), r1 * np.cos(p1))) + pole[0]) # right-most corner of segment
-    by0 = np.min(np.array((r0 * np.sin(p0), r0 * np.sin(p1), r1 * np.sin(p0), r1 * np.sin(p1))) + pole[1]) # lowest corner of segment
-    by1 = np.max(np.array((r0 * np.sin(p0), r0 * np.sin(p1), r1 * np.sin(p0), r1 * np.sin(p1))) + pole[1]) # highest corner of segment
-    # print("- b-box: ((", bx0, ",", by0, "),(", bx1, ",", by1, "))")
-    if (p0 <= 0. and p1 >= 0.): bx1 = pole[0] + r1 # include x = x0 + r1
-    if (p0 <= np.pi and p1 >= np.pi): bx0 = pole[0] - r1 # include x = x0 - r1
-    if (p0 <= 0.5*np.pi and p1 >= 0.5*np.pi): by1 = pole[1] + r1 # include y = y0 + r1
-    if (p0 <= 3.*np.pi/2. and p1 >= 3.*np.pi/2.): by0 = pole[1] - r1 # include y = y0 - r1
-    # print("- b-box: ((", bx0, ",", by0, "),(", bx1, ",", by1, "))")
-    ix0 = np.min([nx-1, np.max([0, int(np.floor(bx0))])]) # pixel range clipped to image
-    ix1 = np.min([nx-1, np.max([0, int( np.ceil(bx1))])])
-    iy0 = np.min([ny-1, np.max([0, int(np.floor(by0))])])
-    iy1 = np.min([ny-1, np.max([0, int( np.ceil(by1))])])
-    # print("- bounding box: ((", ix0, ",", iy0, "),(", ix1, ",", iy1, "))")
+    dxl = (xl1 - xl0) / nrp[0] # x sampling steps produced on the radial output dimension
+    ix0 = min(nyx[1]-1, max(0, int(np.floor(px0 - r1)))) # left pixel range clipped to image
+    ix1 = min(nyx[1]-1, max(0, int(np.ceil(px0 + r1)))) # right pixel range clipped to image
+    iy0 = min(nyx[0]-1, max(0, int(np.floor(py0 - r1)))) # bottom pixel range clipped to image
+    iy1 = min(nyx[0]-1, max(0, int(np.ceil(py0 + r1)))) # top pixel range clipped to image
+    #
     # accumulate polar samples to polar bins
-    for j in range(iy0, iy1+1):
-        dy = 1.*(j - pole[1])
-        dy2 = dy*dy
-        for i in range(ix0, ix1+1):
-            dx = 1.*(i - pole[0])
-            ir2 = dx*dx + dy2
-            ir = np.sqrt(ir2)
-            if (ir < r0 or ir > r1): continue # outside radial range, skip pixel
-            ip = p0
-            if (ir > 0.): # no angle at r = 0
-                ip = np.arctan2(dy,dx) % tpi # pixel azimuth -> into range [0, 2 pi]
-                ipr = (ip - p0) / delta_p # azimuth relative to rng_phi - 0 ... 1
-                if (check_phi): # segment
-                    if (ipr < 0. or ipr > 1.): continue # outside azimuthal range, skip pixel
-            x = x0 + x1 * ir + x2 * ir**2 + x3 * ir**3 # corresponding output grid coordinate
-            jr = int(np.round((x - xl0) / (xl1 - xl0) * num_rad)) # round to next radial bin
-            jp = int(np.round(ipr * num_phi)) # round to next azimuthal bin
-            #print("i =",i,", j =",j,", r =",ir,", p =", ip,", jr =",jr,", jp =",jp)
-            if (jr >= 0 and jr < num_rad and jp >= 0 and jp < num_phi):
-                # norm_out[jr,jp] += 1.
-                image_out[jr,jp] += image[j,i]
-    # renormalize the output # removed (2020-10-13 JB)
-    #for j in range(0, num_rad):
-    #    for i in range(0, num_phi):
-    #        if (norm_out[j,i]>0.): image_out[j,i] /= norm_out[j,i] # divide by number of accumulated samples to the polar bin
-    return image_out
-# %%
+    r = 0.
+    phi = 0.
+    for j in range(iy0, iy1+1): # loop over input grid rows
+        y = j - py0
+        ysqr = y * y
+        for i in range(ix0, ix1+1): # loop over input grid columns
+            x = i - px0
+            r = np.sqrt(x * x + ysqr)
+            if (r < r0 or r > r1): continue # outside radial range, skip pixel
+            phi = np.arctan2(y, x)
+            if phi < 0: phi += tpi # wrap to range [0, 2 pi]
+            if (phi < p0 or phi > p1): continue # ot of azimuth range
+            xl = x0 + x1 * r + x2 * r**2 + x3 * r**3 # corresponding output grid coordinate
+            jr = int(np.round((xl - xl0) / dxl)) # round to next radial bin
+            jp = int(np.round((phi - p0) / dp)) # round to next azimuthal bin
+            if (jr >= 0 and jr < nrp[0] and jp >= 0 and jp < nrp[1]):
+                img_pr[jr,jp] += img_xy[j,i]
+    return
+#
 def radial_bin_mask(ndim, step, pix_pole, nr, radial_range=None):
     """
 

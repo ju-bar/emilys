@@ -11,7 +11,6 @@ published under the GNU General Publishing License, version 3
 
 """
 # %%
-from numba import jit # include compilation support
 import numpy as np
 # %%
 def linsrch_minloc1(data, subpix = True):

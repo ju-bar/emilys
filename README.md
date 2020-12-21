@@ -32,3 +32,8 @@ modified image.polar.polar_resample,
 renamed and modiefied image.polar.polar_transform to image.polar.polar_rebin,
 added a test Jupyter notebook showing how to use polar_resample from a non-isotropic input grid,
 updated PiPy upload with install requirements
+* Version 0.1.2:
+removed ineffective numba jit decorators from routines in image.polar, 
+renamed image.polar.polar_radpol3_trasform to polar_radpol3_rebin
+added image.polar_radpol2_resample
+added numerics.roots.py with some primitive root finding functions
