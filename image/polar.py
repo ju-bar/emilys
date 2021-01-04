@@ -141,9 +141,9 @@ def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np
         pole : float array of length 2
             position (x,y) of the pole/origin in the input image (fractional pixel coordinate)
         rng_rad : float array of length 2
-            radial range in units of the input grid scale
+            radial range start and coverage (r_0, delta_r)
         rng_phi : float array of length 2
-            azimuthal range in radian, use only values from the positive interval [0, 2*Pi]!
+            azimuthal range start and coverage (phi_0, delta_phi) in radians
             default = [0., 2.*np.pi]
         image_scale : float array of length 2
             scale (x, y) of the input image in physical units per pixel, e.g. nm/pixel
@@ -279,7 +279,8 @@ def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi]
 
     Transforms a 2D images to new grid in polar representation using a re-binning algorithm.
 
-    Parameters:
+    Parameters
+    ----------
         image : numpy.array floats with shape (...,ny,nx)
             data on a regular grid
         num_rad : integer
@@ -297,10 +298,12 @@ def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi]
             scale (x, y) of the input image in physical units per pixel, e.g. nm/pixel
             default = [1., 1.]
 
-    Returns:
+    Returns
+    -------
         numpy.array of dimensions, shape (...,num_rad,num_phi)
 
-    Remarks:
+    Remarks
+    -------
         * Can be used to process on the last two dimensions of an array of
           higher dimensions.
         * Due to the non-isotropic distribution of polar bins, some output bins
