@@ -13,6 +13,46 @@ published under the GNU General Publishing License, version 3
 from numba import jit # include compilation support
 import numpy as np
 
+@jit
+def limitn(n, theta, phase_tol_pi=0.25):
+    """
+    Calculates the n-th order aberration tolerance for a given
+    scattering angle theta in radians and phase tolerane in fractions of Pi.
+
+    Parameters
+    ----------
+        n : int
+            aberration order
+                1: defocus, two-fold astigmatism,
+                2: coma, 3-fold astigmatism
+                3: spherical aberration, star aberration, 4-fold,
+                   ...
+        theta : float
+            scattering angle in radians
+        phase_tol_pi : float, optional, default = 0.25
+            phase tolerance
+
+    Returns
+    -------
+        float
+            aberration tolerance in units of the electron wavelength / (2*Pi)
+    
+    Remarks
+    -------
+        This has a just-in-time compilation decorator and may take longer
+        on the first call.
+        Assumes maximum phase shift for an aberration of order n at theta by
+        phi_max(n,theta) = 2*Pi / lambda * c * theta**(n+1) / (n+1)
+        -> 2*Pi / lambda * c = phi_max * (n+1) * theta**(-n-1)
+           2*Pi / lambda * c is returned for phi_max = phase_tol_pi * Pi
+    -
+    """
+    assert n > 0, 'The minimum aberration order supported is n = 1.'
+    m = -1 - n
+    return np.pi * phase_tol_pi * (n+1) * theta**m
+
+    
+
 class aberr_axial_func:
     '''
     
