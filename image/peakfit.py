@@ -163,7 +163,7 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None):
         assert nfit == nfit2, 'internal data size conflict with sigma data'
     prm0 = [ pos[0], pos[1], np.max(yfit) - np.min(yfit), 
              1./np.abs(rad), 0., 1./np.abs(rad), np.min(yfit)] # initial parameter set
-    solprm, solcov = curve_fit( pks.gauss_2d, xfit.T, yfit, prm0,
+    sol = curve_fit( pks.gauss_2d, xfit.T, yfit, prm0,
                                 jac=pks.gauss_2d_jac, sigma=ysig) # call scipy.optimize.curve_fit
-    solerr = np.sqrt(np.diag(solcov))
-    return [solprm, solerr]
+    solerr = np.sqrt(np.diag(sol[1]))
+    return [sol[0], solerr]
