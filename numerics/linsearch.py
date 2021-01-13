@@ -46,14 +46,7 @@ def linsrch_minloc1(data, subpix = True):
         else: # set drow from 1d input
             drow = data
         # find 1st local minimum in drow
-        im = 0
-        vmin = drow[0]
-        for i in range(1, ndat): # loop row data
-            if (drow[i] < vmin): # new min
-                vmin = drow[i]
-                im = i
-            else:
-                break # data increases, stop
+        im = np.argmin(drow)
         dout[j] = 1.0 * im # store min loc
         if (subpix and im > 0 and im < ndat-1): # try to estimate min-loc sub-sample
             # determine minimum location of the parabole crossing points (im-1, im, im+1)
