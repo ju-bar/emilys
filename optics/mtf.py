@@ -12,11 +12,11 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-# %%
+
 from numba import jit # include compilation support
 import numpy as np # include numeric functions
 from scipy.optimize import curve_fit
-# %%
+
 def loadmtf(sfilename):
     """
 
@@ -62,7 +62,42 @@ def loadmtf(sfilename):
         return ares
     else:
         return np.array([])
-# %%
+
+def modelmtf_func(x, d1, d2, mix):
+    """
+
+    MTF model function
+
+    y = (1.-mix) * np.exp(-x/d1) + mix * np.exp(-0.5 * x**2 / d2**2)
+
+    """
+    return (1.-mix) * np.exp(-x/d1) + mix * np.exp(-0.5 * x**2 / d2**2)
+
+def modelmtf(ndim, d1, d2, mix):
+    """
+
+    This calculates radial MTF model values on a grid of 1+ndim/2 points
+    for x = 0 ... 0.5 according to
+    y = (1.-mix) * np.exp(-x/d1) + mix * np.exp(-0.5 * x**2 / d2**2)
+
+    Parameters
+    ----------
+        ndim : int
+            number of image rows and image columns assuming a square image
+        d1 : float
+            exponential decay parameter
+        d2 : float
+            gaussian decay parameter
+        mix : float
+            mix between exponential and gaussian
+            keep this between 0 and 1
+
+    """
+    ndim2 = ndim >> 1
+    lx = np.arange(0, ndim2+1) / ndim
+    ly = modelmtf_func(lx, d1, d2, mix)
+    return np.array([lx, ly]).T
+
 def getmtfkernel(lmtf, ndim, fsca=1.):
     """
 
