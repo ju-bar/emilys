@@ -125,7 +125,7 @@ def source_normal(kernel, samp, src_size):
     '''
     srcsz = np.abs(src_size)
     nd = np.array(kernel.shape)
-    nd2 = ((nd - nd%2)/2).astype(int)
+    nd2 = [nd[0]>>1,nd[1]>>1]
     krad = 3 * srcsz
     kr2 = krad**2
     nkx2 = int(min(np.ceil(krad / samp[0]),nd2[1]))
@@ -237,7 +237,7 @@ def source_distribution(shape, samp, src_size, src_type=1):
     Parameters:
         shape : array, int, (2,)
             shape of the image, number of pixels (rows, columns)
-        samp : array, flat (2,)
+        samp : array, float (2,)
             sampling rates along image rows and columns (x,y) in
             physical units
         src_size : float

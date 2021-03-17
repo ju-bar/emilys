@@ -248,5 +248,5 @@ def convolute_img_ser(img_ser, kernel):
     img_out = img_ser.copy()
     for iimg in range(0, nd[0]):
         data_ft = np.fft.fft2(img_ser[iimg])
-        img_out[iimg,:,:] = np.fft.ifft2(data_ft * kernel_ft.conjugate())
+        img_out[iimg,:,:] = np.fft.ifft2(data_ft * kernel_ft.conjugate()).real # warning this assumes real valued image input
     return img_out
