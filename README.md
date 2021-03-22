@@ -1,6 +1,6 @@
 # emilys
 
-Electron Microscopy Image anaLYsis tools
+Electron Microscopy Image anaLYSis tools
 
 Version: 0.1.3
 
