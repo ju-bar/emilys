@@ -36,6 +36,7 @@ def limitn(n, theta, phase_tol_pi=0.25):
     -------
         float
             aberration tolerance in units of the electron wavelength / (2*Pi)
+            the limit in nm is thus ab.limitn(1, gmax * wl) * wl / (2 * np.pi)
     
     Remarks
     -------
