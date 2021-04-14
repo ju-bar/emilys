@@ -2,7 +2,7 @@
 
 Electron Microscopy Image anaLYSis tools
 
-Version: 0.1.3
+Version: 0.1.4
 
 ## Authors and Copyright
 
@@ -24,6 +24,10 @@ If you just want to use it, install via
 
 ## Changes
 
+* Version 0.1.4:
+modified some interfaces and routines which were causing deprecation warnings with numba.jit decorators
+  This kind of adoption will need to be updated step-by-step whenever it occurs. 
+  Deprecated numba functions will not be supported in later versions of numba.
 * Version 0.1.3:
 added peak fitting to shift measurements as additional method
 modified linear search for minimum on data
