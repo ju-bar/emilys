@@ -12,9 +12,11 @@ published under the GNU General Publishing License, version 3
 """
 from numba import jit # include compilation support
 import numpy as np
-from emilys.image.polar import polar_transform
+from emilys.image.polar import polar_resample
 from scipy.optimize import curve_fit
-# %%
+from emilys.image.arrayplot import arrayplot2d
+import matplotlib.pyplot as plt
+
 def dist_gaussian(x, delta):
     '''
 
@@ -33,7 +35,7 @@ def dist_gaussian(x, delta):
     '''
     return np.exp(-x**2 / delta**2) / (np.sqrt(np.pi) * np.abs(delta))
 
-# %%
+
 def info_limit(delta, lamb):
     '''
 
@@ -51,7 +53,7 @@ def info_limit(delta, lamb):
 
     '''
     return ((np.pi*lamb*delta)**2 / 8.)**0.25
-# %%
+
 def delta_of_kappa(kappa, g, t, lamb):
     '''
     Calculate the focus-spread parameter from the circ_lf model
@@ -59,7 +61,7 @@ def delta_of_kappa(kappa, g, t, lamb):
     beam tilt magnitude t and electron wavelength lamb
     '''
     return np.sqrt(0.5 * kappa) / (np.pi * lamb * g * t)
-# %%
+
 def kappa_of_delta(delta, g, t, lamb):
     '''
     Calculate the kappa parameter for the circ_lf model from
@@ -68,7 +70,6 @@ def kappa_of_delta(delta, g, t, lamb):
     '''
     return 2.0 * (np.pi * lamb * g * t * delta)**2
 
-# %%
 def circ_lf(phi, phi_t, g, t, c0, c1, kappa):
     '''
     
@@ -101,7 +102,7 @@ def circ_lf(phi, phi_t, g, t, c0, c1, kappa):
 
     '''
     return c0 + c1 * np.exp(-kappa * np.cos(phi - phi_t)**2) * np.cosh(kappa * g / t * np.cos(phi - phi_t))
-# %%
+
 def circ_mod(xdata, xt, c0, c1, kap):
     '''
     Circular model of the low-frequency components with tilted beam illumintion.
@@ -122,7 +123,7 @@ def circ_mod(xdata, xt, c0, c1, kap):
     '''
     x, g, t = xdata[0,:], xdata[1,:], xdata[2,:]
     return circ_lf(x, xt, g[0], t[0], c0, c1, kap)
-# %%
+
 def measure_fs_lf(lf_dif, samp_q, q_rng, tilt, lamb):
     '''
 
@@ -176,9 +177,16 @@ def measure_fs_lf(lf_dif, samp_q, q_rng, tilt, lamb):
     nrad = 1 + (int(d_q / samp_q + 0.5) >> 1) # number of rings from (range / sampling / 2)
     nphi = 180 # 180 samples along the azimuth
     porg = np.array([ndim2,ndim2]).astype(float) # origin of the pattern data in lf_dif
-    prng = q_rng / samp_q # radial range in pixels
+    prng = np.array([q_rng[0], d_q]) / samp_q # radial range in pixels
     arng = np.array([0.,2*np.pi]) # full azimuth range
-    apol = polar_transform(lf_dif, nrad, nphi, porg, prng, arng) # get polar transform (could also use polar_resample)
+    #print('nrad=',nrad)
+    #print('nphi=',nphi)
+    #print('porg=',porg)
+    #print('prng=',prng)
+    #print('arng=',arng)
+    apol = polar_resample(lf_dif, nrad, nphi, porg, prng, arng) # get polar transform
+    #arrayplot2d(apol,2,'inferno');
+    #plt.show();
     # --- fit model to all azimuthal curves ---
     xvals = np.zeros((3,nphi)) # prepare x-array
     xvals[0,:] = np.arange(0,nphi) * 2.0 * np.pi / nphi # set the azimuth values as x
@@ -188,6 +196,7 @@ def measure_fs_lf(lf_dif, samp_q, q_rng, tilt, lamb):
     lcov = np.zeros((nrad, 4, 4)) # prepare array to store covariance matrix for all rings
     ldel = np.zeros((nrad, 2)) # prepare array storing focus spread and its error for each ring
     for irow in range(0, nrad): # loop over all rings
+        #print('row=',irow,'   q=',qvals[irow])
         yvals = apol[irow] # get values on current ring
         ymin = np.amin(yvals) # minimum
         yamp = np.amax(yvals) - ymin # amplitude
@@ -196,6 +205,8 @@ def measure_fs_lf(lf_dif, samp_q, q_rng, tilt, lamb):
         popt, pcov = curve_fit(circ_mod, xvals, yvals, p0=np.array([t_phi, ymin, yamp, kap0])) # fit from presets
         lprm[irow,:] = popt # store best fitting parameters
         lcov[irow,:,:] = pcov # store covariance matrix
+        #print('p=',popt)
+        #print('c=',pcov)
         delta = delta_of_kappa(popt[3], qvals[irow], t_mod, lamb) # calculate focus spread
         ldel[irow,0] = delta # store focus spread
         ldel[irow,1] = 0.25 * delta**2 * pcov[3,3] / popt[3]**2 # variance propagation from kappa

@@ -10,9 +10,8 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-# %%
 import numpy as np
-# %%
+
 def linsrch_minloc1(data, subpix = True):
     '''
 
@@ -39,14 +38,22 @@ def linsrch_minloc1(data, subpix = True):
     else:
         b2d = False
         ndat = ndim[0]
-    dout = np.zeros(nrows, dtype=float)
+    dout = np.full(nrows, 0.0, dtype=np.single)
     for j in range(0, nrows):
         if (b2d): # set drow from 2d input
-            drow = data[j]
+            drow = np.array(data[j], dtype=np.single)
         else: # set drow from 1d input
-            drow = data
+            drow = np.array(data, dtype=np.single)
         # find 1st local minimum in drow
-        im = np.argmin(drow)
+        vmin = drow[0]
+        im = 0
+        for i in range(1, len(drow)):
+            if drow[i] < vmin:
+                vmin = drow[i]
+                im = i
+            else:
+                break
+        #im = np.argmin(drow)
         dout[j] = 1.0 * im # store min loc
         if (subpix and im > 0 and im < ndat-1): # try to estimate min-loc sub-sample
             # determine minimum location of the parabole crossing points (im-1, im, im+1)
@@ -58,7 +65,7 @@ def linsrch_minloc1(data, subpix = True):
     if (nrows == 1): return dout[0] # return scalar
     return dout # return vector
 
-# %%
+
 def maxloc_com(y, yerr=0., x0=-1., xrng = 10.):
     calc_err = False
     nd = y.shape
