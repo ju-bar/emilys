@@ -2,7 +2,7 @@
 
 Electron Microscopy Image anaLYSis tools
 
-Version: 0.1.4
+Version: 0.1.5
 
 ## Authors and Copyright
 
@@ -24,6 +24,8 @@ If you just want to use it, install via
 
 ## Changes
 
+* Version 0.1.5:
+added debug to emilys.image.peakfit.fit_local_gauss_2d
 * Version 0.1.4:
 modified some interfaces and routines which were causing deprecation warnings with numba.jit decorators
   This kind of adoption will need to be updated step-by-step whenever it occurs. 

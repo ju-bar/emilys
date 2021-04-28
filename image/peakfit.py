@@ -128,7 +128,7 @@ def get_values_in_circroi(image, pos, rad, wrap=True):
         return [nfit, daty[0:nfit]]
     return [0, []]
 # %%
-def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None):
+def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, debug=False):
     '''
     Fits a gaussian peak to a circular local image area.
 
@@ -157,13 +157,17 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None):
     (nfit, xfit, yfit) = get_data_in_circroi(image, pos, rad, wrap)
     assert nfit > 2 * nprm, 'insufficient number of image points '\
         '({:d} of {:d}) in region of interest'.format(nfit, 2*nprm)
+    if debug: print('dbg (fit_local_gauss_2d): nfit = {:d}'.format(nfit))
     ysig = None
     if (imagesigma != None): # also extract image sigma values
         (nfit2, ysig) = get_values_in_circroi(imagesigma, pos, rad, wrap)
         assert nfit == nfit2, 'internal data size conflict with sigma data'
     prm0 = [ pos[0], pos[1], np.max(yfit) - np.min(yfit), 
              1./np.abs(rad), 0., 1./np.abs(rad), np.min(yfit)] # initial parameter set
+    if debug: print('dbg (fit_local_gauss_2d): prm0 =', prm0)
     sol = curve_fit( pks.gauss_2d, xfit.T, yfit, prm0,
                                 jac=pks.gauss_2d_jac, sigma=ysig) # call scipy.optimize.curve_fit
+    if debug: print('dbg (fit_local_gauss_2d): prm =', sol[0])
     solerr = np.sqrt(np.diag(sol[1]))
+    if debug: print('dbg (fit_local_gauss_2d): std =', solerr)
     return [sol[0], solerr]
