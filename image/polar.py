@@ -375,6 +375,14 @@ def polar_rebin_rpoly3(img_xy, px0, py0, img_pr, r0, p0, dr, dp, x0, x1, x2, x3)
             position of the pole in the input image (fractional pixel coordinates)
         img_pr : numpy.array of 2 dimensions, type float
             outout polar grid
+        r0 : float
+            radial grid offset in input
+        p0 : float
+            azimuthal grid offset in input
+        dr : float
+            radial grid step size in input
+        dp : float
+            azimuthal grid step size in input
         x0 : float
             radial sampling offset, default = 0.
         x1 : float
@@ -415,7 +423,7 @@ def polar_rebin_rpoly3(img_xy, px0, py0, img_pr, r0, p0, dr, dp, x0, x1, x2, x3)
             if (r < r0 or r > r1): continue # outside radial range, skip pixel
             phi = np.arctan2(y, x)
             if phi < 0: phi += tpi # wrap to range [0, 2 pi]
-            if (phi < p0 or phi > p1): continue # ot of azimuth range
+            if (phi < p0 or phi > p1): continue # out of azimuth range
             xl = x0 + x1 * r + x2 * r**2 + x3 * r**3 # corresponding output grid coordinate
             jr = int(np.round((xl - xl0) / dxl)) # round to next radial bin
             jp = int(np.round((phi - p0) / dp)) # round to next azimuthal bin
