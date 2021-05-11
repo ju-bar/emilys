@@ -37,7 +37,58 @@ class supercell:
     Methods
     -------
 
-        get_basis: calculates basis vectors from parameters a0 and angles
+        copy():
+            Returns a copy of the supercell object.
+
+        report(num_atoms_max):
+            Prints a short report of the supercell parameters.
+
+        get_basis():
+            Calculates basis vectors from parameters a0 and angles.
+            Returns a 3 x 3 numpy array where rows are basis vectors.
+
+        get_composition_str():
+            Returns a string representing the atom content of the supercell.
+
+        keep_atoms(l_atoms_idx):
+            Removes all atoms which are not indexed in list l_atoms_idx.
+
+        delete_atoms(l_atoms_idx):
+            Removes all atoms which are indexed in list l_atoms_idx.
+
+        periodic():
+            Applies periodic boundary conditions to all atoms such that
+            their fractional coordinates are >=0 and <1.
+
+        set_uiso(l_atoms_idx, uiso):
+            Sets the uiso parameter of all atoms indexed by list
+            l_atoms_idx to the given value.
+
+        set_biso(l_atoms_idx, biso):
+            Sets the uiso parameter of all atoms indexed by list
+            l_atoms_idx by translating the given biso value.
+            uiso = biso / (8 Pi**2)
+
+        set_occ(l_atoms_idx, occ):
+            Sets the occupancy parameter of all atoms indexed by list
+            l_atoms_idx to the given value.
+
+        shift_atoms(l_atoms_idx, shift, periodic):
+            Shifts atoms indexed in list l_atoms_idx by a shift vector
+            in fractional coordinates.
+
+        shift_all_atoms(shift, periodic):
+            Shifts all atoms by a shift vector in fractional coordinates.
+
+        shift_atoms_to(l_atoms_idx, pos, fraction, confinement, mode):
+            Shifts atoms indexed in list l_atoms_idx towards pos by
+            a given fraction of the initial distance. Shifts can be confined
+            to be parallel to planes or lines.
+
+        list_atoms_in_range(dic_range):
+            Returns a list of atoms which parameters fall into all range
+            specifications listed in the dictionary dic_range. See the
+            function definition on how to setup the dictionary.
 
     """
 
@@ -72,7 +123,7 @@ class supercell:
                 ato = self.l_atoms[i]
                 symb = aty.atom_type_symbol[ato.Z] + get_str_from_charge(ato.charge)
                 print('#{:d}: '.format(i) + symb +
-                    ', pos = [{:.5f}, {:.5f}, {}]'.format(ato.pos[0], ato.pos[1], ato.pos[2]) +
+                    ', pos = [{:.5f}, {:.5f}, {:.5f}]'.format(ato.pos[0], ato.pos[1], ato.pos[2]) +
                     ', occ = {:.5f}, uiso = {:.5f}'.format(ato.occ, ato.uiso) )
 
     def get_basis(self):
@@ -91,6 +142,11 @@ class supercell:
             ])
     
     def get_composition_str(self):
+        """
+
+        Returns a string reflecting the composition of the supercell.
+
+        """
         s_cmp = ''
         d_cmp = {}
         for ato in self.l_atoms:
@@ -190,6 +246,272 @@ class supercell:
         for i in l_work: # copy atoms back
             del self.l_atoms[i]
         return len(self.l_atoms)
+
+    def periodic(self):
+        """
+
+        Wraps all atoms periodically back to the cell so their
+        fractional coordinates are >=0 and <1.
+
+        """
+        if len(self.l_atoms) > 0:
+            for at in self.l_atoms:
+                p = at.pos
+                at.pos = np.round( p % 1.0, 6 ) # wrap with precision of 6 digits
+
+    def set_uiso(self, l_atoms_idx, uiso):
+        """
+
+        Sets the uiso parameter of all atoms indexed by list
+            l_atoms_idx to the given value.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be kept. Other atoms will be removed.
+
+            uiso : float
+                Isotropic mean square amplitude of thermal vibrations
+                in Angström**2 units.
+
+        Returns
+        -------
+            
+            int
+                Number of atoms for which the uiso value was set.
+
+        """
+        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        m = len(self.l_atoms) # current number of atoms
+        if m == 0: return len(self.l_atoms) # nothing to delete
+        n = len(l_atoms_idx) # number of atoms to delete
+        l = 0
+        if n > 0: # work through the list
+            for i in l_atoms_idx: # copy only valid indices 
+                if (i >= 0) and (i < m):
+                    self.l_atoms[i].uiso = uiso
+                    l += 1
+        return l
+
+    def set_biso(self, l_atoms_idx, biso):
+        """
+
+        Sets the uiso parameter of all atoms indexed by list
+            l_atoms_idx by translating the given biso value.
+            uiso = biso / (8 Pi**2)
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be kept. Other atoms will be removed.
+
+            biso : float
+                Isotropic B parameter of the Debye-Waller factor
+                in Angström**2 units. This relates to the iostropic
+                mean squared displacement amplitude usio as
+                biso = 8 * Pi**2 * usio.
+
+        Returns
+        -------
+            
+            int
+                Number of atoms for which the uiso value was set.
+
+        """
+        uiso = biso / (8. * np.pi**2) # from biso to uiso
+        return self.set_uiso(l_atoms_idx, uiso)
+
+    def set_occ(self, l_atoms_idx, occ):
+        """
+
+        Sets the occupancy parameter of all atoms indexed by list
+            l_atoms_idx to the given value.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be kept. Other atoms will be removed.
+
+            occ : float
+                occupancy factor, clipped between 0 and 1
+
+        Returns
+        -------
+            
+            int
+                Number of atoms for which the occupancy value was set.
+
+        """
+        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        m = len(self.l_atoms) # current number of atoms
+        if m == 0: return len(self.l_atoms) # nothing to delete
+        n = len(l_atoms_idx) # number of atoms to delete
+        l = 0
+        focc = min(1., max(0., occ))
+        if n > 0: # work through the list
+            for i in l_atoms_idx: # copy only valid indices 
+                if (i >= 0) and (i < m):
+                    self.l_atoms[i].occ = occ
+                    l += 1
+        return l
+
+    def shift_atoms(self, l_atoms_idx, shift, periodic=False):
+        """
+
+        Shifts all atoms indexed in list l_atoms_idx by a shift vector
+        in fractional coordinates.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be kept. Other atoms will be removed.
+
+            shift : numpy ndarray((3),float)
+                Shift vector in fractional coordinates
+
+            periodic : boolean
+                Flags that periodic wrap should be applied after shifting.
+
+        Returns
+        -------
+
+            int
+                Number of atoms for which were shifted.
+
+        """
+        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        m = len(self.l_atoms) # current number of atoms
+        n = len(l_atoms_idx) # number of atoms to delete
+        l = 0
+        if (n > 0) and (m > 0): # work through the list
+            for i in l_atoms_idx: # copy only valid indices 
+                if (i >= 0) and (i < m):
+                    p = self.l_atoms[i].pos + shift
+                    if periodic:
+                        self.l_atoms[i].pos = np.round(p % 1.0, 6)
+                    else:
+                        self.l_atoms[i].pos = p
+                    l += 1
+        return l
+
+    def shift_all_atoms(self, shift, periodic=False):
+        """
+
+        Shifts all atoms by a shift vector in fractional coordinates.
+
+        Parameters
+        ----------
+
+            shift : numpy ndarray((3),float)
+                Shift vector in fractional coordinates
+
+            periodic : boolean
+                Flags that periodic wrap should be applied after shifting.
+
+        Returns
+        -------
+
+            int
+                Number of atoms for which were shifted.
+        
+        """
+        m = len(self.l_atoms) # current number of atoms
+        l = 0
+        if m > 0: # work through the list
+            for i in range(0, m): # copy only valid indices 
+                p = self.l_atoms[i].pos + shift
+                if periodic:
+                    self.l_atoms[i].pos = np.round(p % 1.0, 6)
+                else:
+                    self.l_atoms[i].pos = p
+                l += 1
+        return l
+
+    def shift_atoms_to(self, l_atoms_idx, pos, fraction=1., confinement=np.array([0.,0.,0.]), mode=3):
+        """
+
+        Shifts atoms indexed in list l_atoms_idx towards pos by
+        a given fraction of the initial distance. Shifts can be confined
+        to be parallel to planes or lines.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be kept. Other atoms will be removed.
+
+            pos : numpy ndarray((3),float)
+                Target position in fractional coordinates.
+
+            fraction : float, default 1.
+                Fraction of the initial distance to shift.
+                Depending on parameter <mode>, the initial distance is
+                1: to a plane through <pos> and with normal <confinement>
+                2: to a line through <pos> and along direction <confinement>
+                3: to the point <pos> without any confinements. 
+
+            confinement : numpy ndarray((3),float), default [0.,0.,0.]
+                Vector defining the orientation of a target plane (<mode> == 1)
+                or a target line (<mode> == 2). If confinement is a zero vector
+                a fallback to <mode> == 3 is used.
+
+            mode : int, default 3
+                Mode of confined shifts.
+                1 : confinement to a direction perpendicular to a plane.
+                2 : confinement to a direction perpendicular to a line.
+                3 (and any other): no confinement
+
+        Returns
+        -------
+
+            int
+                Number of shifted atoms.
+
+        """
+        eps = 1.e-7 # small distance threshold
+        assert isinstance(l_atoms_idx, list), 'Input <l_atoms_idx> should be a list of numbers.'
+        assert isinstance(pos,np.ndarray), 'Input <pos> should be a numpy.ndarry object.'
+        assert len(pos.flatten()) == 3, 'Input <pos> should contain 3 numberst.'
+        assert type(fraction) is float, 'Input <fraction> should be of float type.'
+        assert type(mode) is int, 'Input <mode> should be an integer number.'
+        assert isinstance(confinement,np.ndarray), 'Input <confinement> should be a numpy.ndarry object.'
+        assert len(confinement.flatten()) == 3, 'Input <confinement> should contain 3 numbers.'
+        imode = mode
+        l_conf = np.sqrt(np.dot(confinement,confinement)) # get confinement vector length
+        if l_conf < eps: # zero confinement vector -> mode fallback to 3
+            imode = 3
+        else: # finite confinement vector
+            n_conf = np.round(confinement / l_conf, 6) # confinement normal vector rounded to 6 digits
+        if (imode < 1) or (imode > 3): imode = 3 # internal mode switch limited to 1, 2, or 3
+        n = len(l_atoms_idx) # number of atoms to be moved
+        m = len(self.l_atoms) # number of atoms in the supercell
+        l = 0 # number of shifted atoms
+        if (n > 0) and (m > 0): # try moving atoms
+            for i in l_atoms_idx: # current atom index
+                if (i < 0) or (i >= m): continue # skip invalid atom index
+                ati = self.l_atoms[i] # current atom
+                vec_d_pos = pos - ati.pos # get the vector from atom to pos
+                if mode == 1: # ... to plane distance
+                    vec_d = n_conf * np.dot(n_conf, vec_d_pos) # perpendicular vector from atom position to plane
+                elif mode == 2: # ... to a line
+                    vec_l = n_conf * np.dot(n_conf, vec_d_pos) # component of the distance vector parallel to the line
+                    vec_d = vec_d_pos - vec_l # component of the distance vector perpendicular to the line
+                else: # ... to pos
+                    vec_d = vec_d_pos
+                vec_shift = vec_d * fraction # shift vector
+                p = np.round(ati.pos + vec_shift, 6) # shifted position
+                ati.pos[:] = p[:]
+                l += 1
+        return l
 
     def list_atoms_in_range(self, dic_range={}):
         """
