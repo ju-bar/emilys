@@ -85,10 +85,15 @@ class supercell:
             a given fraction of the initial distance. Shifts can be confined
             to be parallel to planes or lines.
 
+        list_positions(l_atoms_idx):
+            Returns a list of positions of atoms identified by index.
+
         list_atoms_in_range(dic_range):
             Returns a list of atoms which parameters fall into all range
             specifications listed in the dictionary dic_range. See the
             function definition on how to setup the dictionary.
+
+        
 
     """
 
@@ -188,7 +193,7 @@ class supercell:
                 Number of remaining atoms in the supercell object
 
         """
-        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
         m = len(self.l_atoms) # current number of atoms
         if m == 0: return 0 # nothing to keep
         n = len(l_atoms_idx) # new number of atoms
@@ -230,7 +235,7 @@ class supercell:
                 Number of remaining atoms in the supercell object
 
         """
-        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
         m = len(self.l_atoms) # current number of atoms
         if m == 0: return len(self.l_atoms) # nothing to delete
         n = len(l_atoms_idx) # number of atoms to delete
@@ -283,7 +288,7 @@ class supercell:
                 Number of atoms for which the uiso value was set.
 
         """
-        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
         m = len(self.l_atoms) # current number of atoms
         if m == 0: return len(self.l_atoms) # nothing to delete
         n = len(l_atoms_idx) # number of atoms to delete
@@ -348,7 +353,7 @@ class supercell:
                 Number of atoms for which the occupancy value was set.
 
         """
-        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
         m = len(self.l_atoms) # current number of atoms
         if m == 0: return len(self.l_atoms) # nothing to delete
         n = len(l_atoms_idx) # number of atoms to delete
@@ -387,7 +392,7 @@ class supercell:
                 Number of atoms for which were shifted.
 
         """
-        assert type(l_atoms_idx) is list, 'This expects that parameter l_atoms_idx is a list of integers'
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
         m = len(self.l_atoms) # current number of atoms
         n = len(l_atoms_idx) # number of atoms to delete
         l = 0
@@ -513,6 +518,71 @@ class supercell:
                 l += 1
         return l
 
+    def merge(self, other_cell):
+        """
+
+        Merges atom list of <other_cell> to this object.
+
+        Parameters
+        ----------
+
+            other_cell : emilys.structure.supercell.supercell
+                Another supercell object to be merged into this object.
+
+        Returns
+        -------
+
+            int
+                Number of atoms merged to this object.
+
+        Remarks
+        -------
+
+            This requires that <other_cell> has the same size and angles.
+
+        """
+        eps = 1.E-6
+        assert isinstance(other_cell, supercell), 'This requires that <other_cell> is also a supercell object.'
+        assert abs((self.a0[0] - other_cell.a0[0])/self.a0[0]) < eps, 'This requires equal box size (conflict with a0[0]).'
+        assert abs((self.a0[1] - other_cell.a0[1])/self.a0[1]) < eps, 'This requires equal box size (conflict with a0[1]).'
+        assert abs((self.a0[2] - other_cell.a0[2])/self.a0[2]) < eps, 'This requires equal box size (conflict with a0[2]).'
+        assert abs((self.a0[0] - other_cell.a0[0])/self.a0[0]) < eps, 'This requires equal box angles (conflict with angles[0]).'
+        assert abs((self.a0[1] - other_cell.a0[1])/self.a0[1]) < eps, 'This requires equal box angles (conflict with angles[1]).'
+        assert abs((self.a0[2] - other_cell.a0[2])/self.a0[2]) < eps, 'This requires equal box angles (conflict with angles[2]).'
+        m = len(other_cell.l_atoms)
+        if m > 0:
+            self.l_atoms.extend(other_cell.l_atoms)
+        return m
+
+    def list_positions(self, l_atoms_idx):
+        """
+
+        Returns a list of positions of atoms identified by index.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be kept. Other atoms will be removed.
+
+        Returns
+        -------
+
+            list
+                List of atom positions
+
+        """
+        assert isinstance(l_atoms_idx, list), 'Input <l_atoms_idx> should be a list of numbers.'
+        l_pos = []
+        n = len(l_atoms_idx) # number of atoms to be moved
+        m = len(self.l_atoms) # number of atoms in the supercell
+        if (m > 0) and (n > 0):
+            for i in l_atoms_idx:
+                if (i < 0) or (i >= m): continue # invalid index
+                l_pos.append(self.l_atoms[i].pos)
+        return l_pos
+
     def list_atoms_in_range(self, dic_range={}):
         """
 
@@ -578,15 +648,15 @@ class supercell:
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].occ < min_val) or (self.l_atoms[atom_idx].occ >= max_val):
                              l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_pos_x': # remove atoms out of position x range
+                if sel_key == 'rng_pos_a': # remove atoms out of position x range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].pos[0] < min_val) or (self.l_atoms[atom_idx].pos[0] >= max_val):
                              l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_pos_y': # remove atoms out of position y range
+                if sel_key == 'rng_pos_b': # remove atoms out of position y range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].pos[1] < min_val) or (self.l_atoms[atom_idx].pos[1] >= max_val):
                              l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_pos_z': # remove atoms out of position y range
+                if sel_key == 'rng_pos_c': # remove atoms out of position z range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].pos[2] < min_val) or (self.l_atoms[atom_idx].pos[2] >= max_val):
                              l_atoms_idx.remove(atom_idx)

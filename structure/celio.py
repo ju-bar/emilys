@@ -95,7 +95,7 @@ def set_atom_str_CEL(s):
     in_uiso = float(l_cmp[5]) * 100. / (8. * np.pi**2)
     return ato.atom(Z=in_Z, pos = in_pos, uiso=in_uiso, occ=in_occ, charge=in_charge)
 
-def read_cel(file, debug=False):
+def read_CEL(file, debug=False):
     """
     
     Reads atomic structure data from a file assuming the CEL file format.
