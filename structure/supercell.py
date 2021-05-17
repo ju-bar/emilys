@@ -88,6 +88,11 @@ class supercell:
         list_positions(l_atoms_idx):
             Returns a list of positions of atoms identified by index.
 
+        list_close_atoms(l_atoms_idx, proximity, periodic):
+            Returns a list of lists of atoms, which are closer than the
+            proximity parameter in nanometers. The periodic option switches
+            the check of proximity under periodic boundary conditions.
+
         list_atoms_in_range(dic_range):
             Returns a list of atoms which parameters fall into all range
             specifications listed in the dictionary dic_range. See the
@@ -226,7 +231,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                to be deleted. Other atoms will be kept.
 
         Returns
         -------
@@ -275,7 +280,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                for which the uiso parameter is set.
 
             uiso : float
                 Isotropic mean square amplitude of thermal vibrations
@@ -312,7 +317,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                for which the biso parameter is set.
 
             biso : float
                 Isotropic B parameter of the Debye-Waller factor
@@ -341,7 +346,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                for which the occupancy parameter is set.
 
             occ : float
                 occupancy factor, clipped between 0 and 1
@@ -377,7 +382,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                to be shifted.
 
             shift : numpy ndarray((3),float)
                 Shift vector in fractional coordinates
@@ -452,7 +457,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                to shifted.
 
             pos : numpy ndarray((3),float)
                 Target position in fractional coordinates.
@@ -564,7 +569,7 @@ class supercell:
 
             l_atoms_idx : list
                 List of indices identifying atoms in member l_atoms
-                to be kept. Other atoms will be removed.
+                for which positions should be listed.
 
         Returns
         -------
@@ -582,6 +587,70 @@ class supercell:
                 if (i < 0) or (i >= m): continue # invalid index
                 l_pos.append(self.l_atoms[i].pos)
         return l_pos
+
+    def list_close_atoms(self, l_atoms_idx, proximity, periodic=True, debug=False):
+        """
+
+        Returns a list of lists of atoms, which are closer than the
+        proximity parameter in nanometers. The periodic option switches
+        the check of proximity under periodic boundary conditions.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be checked for mutual proximity. Atoms not included
+                in the list will be ignored in the proximity checks.
+
+            proximity : float
+                Sets a threshold to which distance in nanometers is
+                identified as close.
+
+            periodic : boolean, default: True
+                Switches proximity checks under periodic boundary
+                condistions.
+
+            debug : boolean, default: False
+                Switches extra debug text output.
+
+        Returns
+        -------
+
+            list
+                List of lists of atom indices
+        
+        """
+        l_close = []
+        assert isinstance(l_atoms_idx, list), 'Input <l_atoms_idx> should be a list of numbers.'
+        m = len(self.l_atoms) # number of atoms in the supercell
+        n = len(l_atoms_idx) # list of atom indices to check for proximity
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        sdthr = proximity * proximity
+        if (n > 1) and (m > 1): # need at least two atoms to check
+            for i in range(0, n):
+                idx = l_atoms_idx[i]
+                vlp0 = self.l_atoms[idx].pos
+                l_close_cur = [idx]
+                for j in range(i+1, n):
+                    jdx = l_atoms_idx[j]
+                    vlp1 = self.l_atoms[jdx].pos
+                    if periodic: # fractional distance vector across periodic boundary conditions
+                        vdlp = ((vlp1 - vlp0 + 0.5) % 1.0 ) - 0.5
+                    else: # fractional distance vector, no periodic boundary
+                        vdlp = vlp1 - vlp0
+                    vdp = np.dot(mb0, vdlp) # distance vector in physical coordinates [nm]
+                    sd = np.dot(vdp, vdp)
+                    if sd <= sdthr: # squared distance check [nm**2]
+                        if debug: print('#{:d} {:s} <-> #{:d} {:s}: d = {:.4f} nm'.format(
+                            idx, aty.atom_type_symbol[self.l_atoms[idx].Z],
+                            jdx, aty.atom_type_symbol[self.l_atoms[jdx].Z], np.sqrt(sd)))
+                        l_close_cur.append(jdx)
+                # handle the current list of atoms close to atim idx
+                if len(l_close_cur) > 1: # at least a pair?
+                    l_close.append(l_close_cur) # append to output list
+                    if debug: print('added list', l_close_cur)
+        return l_close
 
     def list_atoms_in_range(self, dic_range={}):
         """
