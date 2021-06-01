@@ -165,7 +165,7 @@ def source_cauchy(kernel, samp, src_size):
     '''
     srcsz = np.abs(src_size)
     nd = np.array(kernel.shape)
-    nd2 = ((nd - nd%2)/2).astype(int)
+    nd2 = [nd[0]>>1,nd[1]>>1]
     krad = 10 * srcsz
     kr2 = krad**2
     nkx2 = int(min(np.ceil(krad / samp[0]),nd2[1]))
@@ -208,7 +208,7 @@ def source_disk(kernel, samp, src_size):
     '''
     srcsz = np.abs(src_size)
     nd = np.array(kernel.shape)
-    nd2 = ((nd - nd%2)/2).astype(int)
+    nd2 = [nd[0]>>1,nd[1]>>1]
     krad = 1.5 * srcsz
     nkx2 = int(min(np.ceil(krad / samp[0]),nd2[1]))
     nky2 = int(min(np.ceil(krad / samp[1]),nd2[0]))

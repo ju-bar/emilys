@@ -50,6 +50,12 @@ class supercell:
         get_composition_str():
             Returns a string representing the atom content of the supercell.
 
+        get_avg_pos(l_atoms_idx, proximity, periodic):
+            Returns the average position of a list of atoms given by the
+            index list l_atoms_idx. Only atoms closer than the proximity 
+            parameter will be included and this may be checked under
+            periodic boundary conditions.
+
         keep_atoms(l_atoms_idx):
             Removes all atoms which are not indexed in list l_atoms_idx.
 
@@ -97,8 +103,6 @@ class supercell:
             Returns a list of atoms which parameters fall into all range
             specifications listed in the dictionary dic_range. See the
             function definition on how to setup the dictionary.
-
-        
 
     """
 
@@ -176,6 +180,36 @@ class supercell:
                 s_cmp += str(int(v_occ))
             n_cmp += 1
         return s_cmp
+
+    def get_avg_pos(self, l_atoms_idx, proximity, periodic):
+        pos = np.array([0.,0.])
+        npos = 0
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
+        m = len(self.l_atoms) # current number of atoms
+        if m == 0: return pos # dummy
+        n = len(l_atoms_idx) # number of atoms to include
+        if n == 0: return pos # dummy
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        sdthr = proximity * proximity
+        pos = self.l_atoms[l_atoms_idx[0]].pos.copy()
+        npos = 1
+        if n > 1:
+            for i in range(1, n):
+                idx = l_atoms_idx[i]
+                apos = self.l_atoms[idx].pos.copy()
+                dpos = apos - pos
+                wpos = np.array([0.,0.,0.])
+                if periodic:
+                    for j in range(0,3):
+                        if dpos[j] < -0.5: wpos[j] = 1.
+                        if dpos[j] >= 0.5: wpos[j] = -1.
+                bpos = apos + wpos
+                dpos = np.dot(mb0, bpos - pos)
+                if np.dot(dpos,dpos) < sdthr:
+                    pos = (pos * npos + bpos) / (npos+1)
+                    npos += 1
+        if periodic: return np.round(pos % 1.0, 6)
+        return np.round(pos, 6)
 
     def keep_atoms(self, l_atoms_idx):
         """
