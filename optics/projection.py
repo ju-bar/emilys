@@ -11,9 +11,9 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-from numba import jit # include compilation support
+# from numba import jit # include compilation support
 import numpy as np
-from scipy.special import comb
+from math import comb
 from scipy.optimize import minimize, root
 from emilys.numerics.lstsq import linear_lstsq as llstsq
 
@@ -69,7 +69,7 @@ class projection_func_2d:
                 self.__lcoeff_to_idx[n-l,l] = idx
                 self.__lidx_to_coeff[idx,0] = l
                 self.__lidx_to_coeff[idx,1] = n - l
-                self.__lbinom[idx] = comb(n,l,exact=True)
+                self.__lbinom[idx] = comb(n,l)
                 idx += 1
 
     def reinitialize(self, max_order=1):

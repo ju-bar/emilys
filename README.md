@@ -28,6 +28,7 @@ If you just want to use it, install via
 Added debug to emilys.image.peakfit.fit_local_gauss_2d. 
 Added sub-package structure for handling atomic structure models used in TEM simulations.
 Changed some kernel functions to regain compatibility with numba.
+Added geometry and binning functions.
 * Version 0.1.4:
 Modified some interfaces and routines which were causing deprecation warnings with numba.jit decorators. 
   This kind of adoption will need to be updated step-by-step whenever it occurs.  
