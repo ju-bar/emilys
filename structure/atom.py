@@ -78,8 +78,9 @@ class atom:
     Methods
     -------
 
-        getstr_CEL : returns a string line for CEL file output of atom parameters
-        setstr_CEL : sets atom parameters from a CEL file line
+        get_type_name(l_type_name_adds)
+            Returns a string for an atom type name with possible addistions
+            depending on other atom parameters.
 
     """
 
@@ -89,5 +90,35 @@ class atom:
         self.uiso = uiso
         self.occ = occ
         self.charge = charge
+
+    def get_type_name(self, l_type_name_adds = []):
+        """
+        
+        Returns a string for an atom type name with possible addistions
+        depending on other atom parameters.
+        
+        Parameters
+        ----------
+
+            l_type_name_adds : list
+                List of strings that determine additions made to the
+                type names:
+                'occ' : adds occupancy
+                'uiso' : adds the thermal vibration mean square amplitude
+                'ion' : adds the ionic charge
+
+        """
+        s = atty.atom_type_symbol[self.Z]
+        scrg = ''
+        socc = ''
+        suiso = ''
+        for sadd in l_type_name_adds:
+            if sadd == 'ion':
+                scrg = get_str_from_charge(self.charge) 
+            if sadd =='occ' :
+                socc = '_occ{:.3f}'.format(self.occ)
+            if sadd == 'uiso':
+                suiso = '_uiso{:.6f}'.format(self.uiso)
+        return s + scrg + socc + suiso
 
     

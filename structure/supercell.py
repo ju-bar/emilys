@@ -56,6 +56,10 @@ class supercell:
             parameter will be included and this may be checked under
             periodic boundary conditions.
 
+        get_type_dict(l_atoms_idx):
+            Returns a dictionary listing atomic types and sites assigned
+            to these types for all atoms indexed in list l_atoms_idx.
+
         keep_atoms(l_atoms_idx):
             Removes all atoms which are not indexed in list l_atoms_idx.
 
@@ -210,6 +214,42 @@ class supercell:
                     npos += 1
         if periodic: return np.round(pos % 1.0, 6)
         return np.round(pos, 6)
+
+    def get_type_dict(self, l_atoms_idx=None, l_type_name_adds = []):
+        """
+
+            Returns a dictionary listing atomic types and sites assigned
+            to these types for all atoms indexed in list l_atoms_idx.
+
+            Parameters
+            ----------
+                l_atoms_idx : list
+                    List of indices of the structures atom list to be included.
+                    Can be None to use all atoms of the structure.
+                l_type_name_adds : list
+                    List of strings that determine additions made to the
+                    type names:
+                    'occ' : adds occupancy
+                    'uiso' : adds the thermal vibration mean square amplitude
+                    'ion' : adds the ionic charge
+        """
+        if l_atoms_idx is None:
+            aidx = list(range(0, len(self.l_atoms)))
+        else:
+            aidx = l_atoms_idx
+        d = {}
+        n = len(aidx)
+        m = len(self.l_atoms)
+        if (m > 0 and n > 0):
+            for i in aidx:
+                if (i < m and i >= 0):
+                    a = self.l_atoms[i]
+                    s = a.get_type_name(l_type_name_adds)
+                    if s in d.keys(): # only add site
+                        d[s]['sites'].append(a.pos)
+                    else: # add new type
+                        d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge, 'sites' : [a.pos] }
+        return d
 
     def keep_atoms(self, l_atoms_idx):
         """
