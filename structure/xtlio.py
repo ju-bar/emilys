@@ -103,24 +103,24 @@ def write_XTL(sc, file, l_type_name_adds = []):
     if 'ion' in l_type_name_adds:
         ionic = True
     with open(file, "w") as file_out:
-        file_out.write("# EMILYS xtlio of [" + sc.get_composition_str() + "] \n")
-        file_out.write("  {:.6f}  {:.6f}  {:.6f}  {:.4f}  {:.4f}  {:.4f} \n".format(
+        file_out.write(sc.get_composition_str() + " (xtlio)\n")
+        file_out.write("{:<11.6f}{:<11.6f}{:<11.6f}{:<10.4f}{:<10.4f}{:<10.4f}\n".format(
             sc.a0[0], sc.a0[1], sc.a0[2], sc.angles[0], sc.angles[1], sc.angles[2]))
         d = sc.get_type_dict(None, l_type_name_adds)
         natty = len(d.keys())
-        file_out.write("{:d} \n".format(natty)) # number of atom types
+        file_out.write("{:d}\n".format(natty)) # number of atom types
         for satty in d.keys():
             atty = d[satty]
-            file_out.write(satty + " \n") # atom type name
+            file_out.write(satty + "\n") # atom type name
             # atom type paramaters
             if ionic:
                 sion = ato.get_str_from_charge(atty["ion"])
-                file_out.write("{:d}  {:.3f}  {:.3f}  {:.5E}  {:s} \n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"],sion)) # number of atom types
+                file_out.write("{:<5d}{:<10.3f}{:<10.3f}{:<11.5E}  {:s}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"],sion)) # number of atom types
             else:
-                file_out.write("{:d}  {:.3f}  {:.3f}  {:.5E} \n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"])) # number of atom types
+                file_out.write("{:<5d}{:<10.3f}{:<10.3f}{:<11.5E}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"])) # number of atom types
             # atom type sites
             for pos in atty["sites"]:
-                file_out.write("     {:.6f}  {:.6f}  {:.6f} \n".format(pos[0], pos[1], pos[2]))
+                file_out.write("     {:<10.6f}{:<10.6f}{:<10.6f}\n".format(pos[0], pos[1], pos[2]))
         file_out.write("\n")
         file_out.close()
     return io_err

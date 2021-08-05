@@ -92,7 +92,7 @@ def set_atom_str_CEL(s):
     in_Z = aty.Z_from_symb(symb) # atom type
     in_pos = np.array([float(l_cmp[1]), float(l_cmp[2]), float(l_cmp[3])])
     in_occ = float(l_cmp[4])
-    in_uiso = float(l_cmp[5]) * 100. / (8. * np.pi**2)
+    in_uiso = float(l_cmp[5]) * 100. / (8. * np.pi**2) #  usio in Angst^2
     return ato.atom(Z=in_Z, pos = in_pos, uiso=in_uiso, occ=in_occ, charge=in_charge)
 
 def read_CEL(file, debug=False):
@@ -130,8 +130,8 @@ def read_CEL(file, debug=False):
     l_cmp = re.split(' +|,|;|\t+', lines[1].strip()) # decompose to list of string
     assert len(l_cmp) > 6, "The second line of the input file could not be split into >6 items."
     if debug: print('dbg (read_cel): supercell input line: ', l_cmp)
-    sc.a0 = np.array([float(l_cmp[1]),float(l_cmp[2]),float(l_cmp[3])])
-    if debug: print('dbg (read_cel): supercell size [nm]: a = {:.5f}, a = {:.5f}, c = {:.5f}'.format(*sc.a0))
+    sc.a0 = np.array([float(l_cmp[1]),float(l_cmp[2]),float(l_cmp[3])]) * 10. # from nm to Angst
+    if debug: print('dbg (read_cel): supercell size [A]: a = {:.5f}, a = {:.5f}, c = {:.5f}'.format(*sc.a0))
     sc.angles = np.array([float(l_cmp[4]),float(l_cmp[5]),float(l_cmp[6])])
     if debug: print('dbg (read_cel): supercell angles [deg]: alpha = {:.4f}, beta = {:.4f}, gamma = {:.4f}'.format(*sc.angles))
     # process the lines

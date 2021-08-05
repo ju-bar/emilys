@@ -26,11 +26,11 @@ class supercell:
     ----------
 
         a0 : numpy.ndarray([a, b, c], dtype=float)
-            cell lattice constants
+            cell lattice constants in Angst
         angles : numpy.ndarray([alpha, beta, gamma], dtype=float)
             cell lattice angles between [bc, ca, ab]
         basis : numpy.ndarray([[ax, ay, az],[bx,by,bz],[cx,cy,cz]], dtype=float)
-            call basis vectors
+            call basis vectors in Angst
         l_atoms : list of atom objects
             atoms contained in the super cell
 
@@ -132,7 +132,7 @@ class supercell:
 
         """
         n = len(self.l_atoms)
-        print('lattice constants [nm]: a = {:.5f}, b = {:.5f}, c = {:.5f}'.format(self.a0[0],self.a0[1],self.a0[2]))
+        print('lattice constants [A]: a = {:.5f}, b = {:.5f}, c = {:.5f}'.format(self.a0[0],self.a0[1],self.a0[2]))
         print('lattice angles [deg]: alpha = {:.4f}, beta = {:.4f}, gamma = {:.4f}'.format(self.angles[0],self.angles[1],self.angles[2]))
         print('number of atoms: {:d}'.format(n))
         n_max = min(n, num_atoms_max)
