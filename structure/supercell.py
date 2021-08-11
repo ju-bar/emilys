@@ -441,7 +441,7 @@ class supercell:
         if n > 0: # work through the list
             for i in l_atoms_idx: # copy only valid indices 
                 if (i >= 0) and (i < m):
-                    self.l_atoms[i].occ = occ
+                    self.l_atoms[i].occ = focc
                     l += 1
         return l
 
