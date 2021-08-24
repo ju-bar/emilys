@@ -25,11 +25,11 @@ class supercell:
     Parameters
     ----------
 
-        a0 : numpy.ndarray([a, b, c], dtype=float)
+        a0 : numpy.ndarray([a,b,c], dtype=float)
             cell lattice constants in Angst
         angles : numpy.ndarray([alpha, beta, gamma], dtype=float)
-            cell lattice angles between [bc, ca, ab]
-        basis : numpy.ndarray([[ax, ay, az],[bx,by,bz],[cx,cy,cz]], dtype=float)
+            cell lattice angles between [bc,ca,ab]
+        basis : numpy.ndarray([[ax,ay,az],[bx,by,bz],[cx,cy,cz]], dtype=float)
             call basis vectors in Angst
         l_atoms : list of atom objects
             atoms contained in the super cell
@@ -59,6 +59,9 @@ class supercell:
         get_type_dict(l_atoms_idx):
             Returns a dictionary listing atomic types and sites assigned
             to these types for all atoms indexed in list l_atoms_idx.
+
+        add_atom(Z, uiso, pos, occ, charge):
+            Adds an atom to the structure with given parameters.
 
         keep_atoms(l_atoms_idx):
             Removes all atoms which are not indexed in list l_atoms_idx.
@@ -250,6 +253,33 @@ class supercell:
                     else: # add new type
                         d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge, 'sites' : [a.pos] }
         return d
+
+    def add_atom(self, Z, uiso, pos, occ = 1.0, charge = 0.0):
+        """
+
+        Adds an atom to the structure with given parameters.
+
+        Parameters
+        ----------
+            Z : int
+                atomic number
+            uiso : float
+                mean squared vibration amplitude in [Ang^2]
+            pos : numpy.ndarray([x, y, z], dtype=float)
+                fractional coordinates in a supercell
+            occ : float, default 1.0
+                fractional site occupation
+            charge : float, default 0.0
+                ionic charge in units of the elementary charge
+        
+        Returns
+        -------
+            int
+                The index at which the atom was added to the list member l_atoms.
+        """
+        ato = atom(Z, pos, uiso, occ, charge)
+        self.l_atoms.append(ato)
+        return len(self.l_atoms)
 
     def keep_atoms(self, l_atoms_idx):
         """
