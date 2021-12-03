@@ -218,7 +218,7 @@ class supercell:
         if periodic: return np.round(pos % 1.0, 6)
         return np.round(pos, 6)
 
-    def get_type_dict(self, l_atoms_idx=None, l_type_name_adds = []):
+    def get_type_dict(self, l_atoms_idx=None, l_type_name_adds=None):
         """
 
             Returns a dictionary listing atomic types and sites assigned
@@ -240,6 +240,10 @@ class supercell:
             aidx = list(range(0, len(self.l_atoms)))
         else:
             aidx = l_atoms_idx
+        if l_type_name_adds is None:
+            li_type_name_adds = []
+        else:
+            li_type_name_adds = l_type_name_adds
         d = {}
         n = len(aidx)
         m = len(self.l_atoms)
@@ -247,7 +251,7 @@ class supercell:
             for i in aidx:
                 if (i < m and i >= 0):
                     a = self.l_atoms[i]
-                    s = a.get_type_name(l_type_name_adds)
+                    s = a.get_type_name(li_type_name_adds)
                     if s in d.keys(): # only add site
                         d[s]['sites'].append(a.pos)
                     else: # add new type
@@ -808,29 +812,29 @@ class supercell:
                 if sel_key == 'rng_Z': # remove all atoms not fulfilling atomic number range condition
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].Z < min_val) or (self.l_atoms[atom_idx].Z >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
                 if sel_key == 'rng_charge': # remove atoms out of charge range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].charge < min_val) or (self.l_atoms[atom_idx].charge >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
                 if sel_key == 'rng_uiso': # remove atoms out of uiso range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].uiso < min_val) or (self.l_atoms[atom_idx].uiso >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
                 if sel_key == 'rng_occ': # remove atoms out of occupancy range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].occ < min_val) or (self.l_atoms[atom_idx].occ >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
                 if sel_key == 'rng_pos_a': # remove atoms out of position x range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].pos[0] < min_val) or (self.l_atoms[atom_idx].pos[0] >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
                 if sel_key == 'rng_pos_b': # remove atoms out of position y range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].pos[1] < min_val) or (self.l_atoms[atom_idx].pos[1] >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
                 if sel_key == 'rng_pos_c': # remove atoms out of position z range
                     for atom_idx in l_bk:
                         if (self.l_atoms[atom_idx].pos[2] < min_val) or (self.l_atoms[atom_idx].pos[2] >= max_val):
-                             l_atoms_idx.remove(atom_idx)
+                            l_atoms_idx.remove(atom_idx)
         return l_atoms_idx

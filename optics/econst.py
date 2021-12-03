@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed Sep 23 08:53:00 2020
+Modified on Mon Nov 15 16:00:00 2021
 @author: ju-bar
 
 Constants and functions related to electrons and their physics
 
-Declaration of physical constants based on published CODATA 2014
-Source:	<http://dx.doi.org/10.1103/RevModPhys.88.035009>
+Declaration of physical constants based on published CODATA 2018
+Source:	<https://doi.org/10.1103/RevModPhys.93.025010>
 
 Constant symbols are declared with capital letters.
 Prefixes:
@@ -23,15 +24,16 @@ import numpy as np
 PHYS_C = 299792458. # vacuum speed of light [ m s^(-1) ]
 PHYS_MU0 = 1.2566370614359172953850573533118E-6 # magnetic constant = 4*Pi * 10^(-7) [ N A^(-1) ]
 PHYS_EPS0 =	8.8541878176203898505365630317108E-12 # electric constant = 1/(_MU0 _C0^2) [ F m^(-1) ]
+PHYS_HPL = 6.62607015E-34 # Planck's constant [ J s ]
+PHYS_QEL = 1.602176634E-19 # elementary charge [ C ]
+
+PHYS_HPLEV = 4.135667697E-15 # Planck's constant [ eV s ]
+PHYS_HBAR = 1.054571818E-34 # reduced Planck's constant [ J s ]
+PHYS_HBAREV = 6.582119570E-16 # reduced Planck's constant [ eV s ]
 
 # Derived constants
-PHYS_HPL = 6.626070040E-34 # Planck's constant, error (81) in last digits [ J s ]
-PHYS_HPLEV = 4.135667662E-15 # Planck's constant, error (25) in last digits [ eV s ]
-PHYS_HBAR = 1.054571800E-34 # reduced Planck's constant, error (13) in last digits [ J s ]
-PHYS_HBAREV = 6.582119514E-16 # reduced Planck's constant, error (40) in last digits [ eV s ]
-PHYS_QEL = 1.6021766208E-19 # elementary charge, error (98) in last digits [ C ]
 
-EL_M0 = 9.10938356E-31 # electron rest mass, error (11) in last digits [ kg ]
+EL_M0 = 9.1093837015E-31 # electron rest mass, error (28) in last digits [ kg ]
 EL_E0 = EL_M0 * PHYS_C**2 # electron rest energy [ J ]
 EL_E0EV = EL_E0 / PHYS_QEL # electron rest energy [ eV ]
 EL_E0KEV = EL_E0 / PHYS_QEL / 1000. # electron rest energy [ keV ]
