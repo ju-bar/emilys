@@ -19,6 +19,7 @@ class waki:
     def __init__(self):
         self.atty_max = 92 # max Z supported by the table
         self.prm_num = 14 # number of parameters in the table + 1
+        self.iyr = 0.02 # inverse Yukawa range for the ionic charge potential in 1/A for s = q/2
         self.s2_min = 0.001 # small s**2 approximation limit
         self.ts = np.array([0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00, 1.20, 1.40, 1.60, 1.80, 2.00, 2.50, 3.00, 3.50, 4.00, 5.00, 6.00])
         self.tprm = np.zeros((self.atty_max+1, self.prm_num+1),dtype=float)
@@ -157,7 +158,7 @@ class waki:
     def get_fe(self, Z, s):
         c1 = ec.EL_CFFA
         s2 = s**2
-        al = 0.02 # inverse yukawa range in A (only used for small s2 in ions to calculate 1/(s2+al**2))
+        al = self.iyr # inverse yukawa range in A (only used for small s2 in ions to calculate 1/(s2+al**2))
         a = self.get_prm(Z)
         if s2 < self.s2_min: # small s approximation
             total = a[12] # c
