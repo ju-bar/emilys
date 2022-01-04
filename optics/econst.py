@@ -22,7 +22,7 @@ published under the GNU General Publishing License, version 3
 import numpy as np
 # Exact constants
 PHYS_C = 299792458. # vacuum speed of light [ m s^(-1) ]
-PHYS_MU0 = 1.2566370614359172953850573533118E-6 # magnetic constant = 4*Pi * 10^(-7) [ N A^(-1) ]
+PHYS_MU0 = 1.2566370614359172953850573533118E-6 # magnetic constant = 4*Pi * 10^(-7) [ N A^(-2) ]
 PHYS_EPS0 =	8.8541878176203898505365630317108E-12 # electric constant = 1/(_MU0 _C0^2) [ F m^(-1) ]
 PHYS_HPL = 6.62607015E-34 # Planck's constant [ J s ]
 PHYS_QEL = 1.602176634E-19 # elementary charge [ C ]
