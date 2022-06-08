@@ -167,8 +167,9 @@ def write_CEL(sc, file):
     assert isinstance(file, str), 'This expects that file is input of type str'
     with open(file, "w") as file_out:
         file_out.write("# EMILYS celio of [" + sc.get_composition_str() + "] \n")
+        lat_c = sc.a0 * 0.1 # from Angst to nm
         file_out.write(" 0  {:.5f}  {:.5f}  {:.5f}  {:.4f}  {:.4f}  {:.4f} \n".format(
-            sc.a0[0], sc.a0[1], sc.a0[2], sc.angles[0], sc.angles[1], sc.angles[2]))
+            lat_c[0], lat_c[1], lat_c[2], sc.angles[0], sc.angles[1], sc.angles[2]))
         for a in sc.l_atoms:
             file_out.write(get_atom_str_CEL(a) + "\n")
         file_out.write("*\n")

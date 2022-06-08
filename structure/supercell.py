@@ -50,6 +50,12 @@ class supercell:
         get_composition_str():
             Returns a string representing the atom content of the supercell.
 
+        grow(add_size, center):
+            Grows the supercell by given amount in Angst in three dimensions.
+            This effectively adds empty space at the large coordinate ends
+            of the box. The center option can be used to center the previous
+            content in the new box.
+
         get_avg_pos(l_atoms_idx, proximity, periodic):
             Returns the average position of a list of atoms given by the
             index list l_atoms_idx. Only atoms closer than the proximity 
@@ -105,6 +111,11 @@ class supercell:
             Returns a list of lists of atoms, which are closer than the
             proximity parameter in nanometers. The periodic option switches
             the check of proximity under periodic boundary conditions.
+
+        remove_close_atoms(l_atoms_idx, proximity):
+            Returns a list of atom indices to be removed from l_atoms_idx.
+            The removel is not performed, so that l_atoms_idx remains 
+            unchanged by this routine.
 
         list_atoms_in_range(dic_range):
             Returns a list of atoms which parameters fall into all range
@@ -187,6 +198,45 @@ class supercell:
                 s_cmp += str(int(v_occ))
             n_cmp += 1
         return s_cmp
+
+    def grow(self, add_size, center=False):
+        """
+
+        Grows the supercell by given amount in Angst in three dimensions.
+        This effectively adds empty space at the large coordinate ends
+        of the box. The center option can be used to center the previous
+        content in the new box.
+
+        Parameters
+        ----------
+
+            add_size : numpy.ndarray([x, y, z], dtype=float)
+                Size added to the current box dimensions in Angst for
+                each lattice dimension.
+
+            center : boolean (default: False)
+                If True, the previous content will be centered in the new
+                bos. If False, the box will be extended towards the positive
+                lattice axes.
+
+        Returns
+        -------
+
+            numpy.ndarray([x, y, z], dtype=float) : new size of the box
+
+        """
+        new_a0 = self.a0 + add_size # new box size
+        f_scale = self.a0 / new_a0 # scaling factor from old to new box size keeping actual positions
+        n_atoms = len(self.l_atoms)
+        if n_atoms > 0:
+            for i in range(0, n_atoms):
+                self.l_atoms[i].pos = self.l_atoms[i].pos * f_scale # scale fractional atom positions
+        self.a0 = new_a0 # update bos size
+        if center: # center previous content in new box?
+            f_shift = 0.5 * add_size / self.a0 # fract. shift by half of the added size
+            self.shift_all_atoms(f_shift) # shift without enforcing periodic boundary conditions
+        return self.a0 # return new box size
+        
 
     def get_avg_pos(self, l_atoms_idx, proximity, periodic):
         pos = np.array([0.,0.])
@@ -659,13 +709,64 @@ class supercell:
         assert abs((self.a0[0] - other_cell.a0[0])/self.a0[0]) < eps, 'This requires equal box size (conflict with a0[0]).'
         assert abs((self.a0[1] - other_cell.a0[1])/self.a0[1]) < eps, 'This requires equal box size (conflict with a0[1]).'
         assert abs((self.a0[2] - other_cell.a0[2])/self.a0[2]) < eps, 'This requires equal box size (conflict with a0[2]).'
-        assert abs((self.a0[0] - other_cell.a0[0])/self.a0[0]) < eps, 'This requires equal box angles (conflict with angles[0]).'
-        assert abs((self.a0[1] - other_cell.a0[1])/self.a0[1]) < eps, 'This requires equal box angles (conflict with angles[1]).'
-        assert abs((self.a0[2] - other_cell.a0[2])/self.a0[2]) < eps, 'This requires equal box angles (conflict with angles[2]).'
+        assert abs((self.angles[0] - other_cell.angles[0])/self.angles[0]) < eps, 'This requires equal box angles (conflict with angles[0]).'
+        assert abs((self.angles[1] - other_cell.angles[1])/self.angles[1]) < eps, 'This requires equal box angles (conflict with angles[1]).'
+        assert abs((self.angles[2] - other_cell.angles[2])/self.angles[2]) < eps, 'This requires equal box angles (conflict with angles[2]).'
         m = len(other_cell.l_atoms)
         if m > 0:
             self.l_atoms.extend(other_cell.l_atoms)
         return m
+
+    def insert(self, other_cell, proximity):
+        """
+
+        Puts atoms from <other_cell> into this object. First removes all atoms of
+        this object that would be closer than proximity to the new atoms.
+
+        Parameters
+        ----------
+
+            other_cell : emilys.structure.supercell.supercell
+                Another supercell object to be inserted into this object.
+
+            proximity : float
+                Minimum distance allowed of existing atoms to the new atoms.
+                Any atom in the previous list that is closer than proximity
+                to any of the new atoms will be removed before adding the new
+                atoms.
+
+        Returns
+        -------
+
+            int
+                New number of atoms in this object.
+
+        Remarks
+        -------
+
+            This requires that <other_cell> has the same size and angles.
+
+        """
+        eps = 1.E-6
+        assert isinstance(other_cell, supercell), 'This requires that <other_cell> is also a supercell object.'
+        assert abs((self.a0[0] - other_cell.a0[0])/self.a0[0]) < eps, 'This requires equal box size (conflict with a0[0]).'
+        assert abs((self.a0[1] - other_cell.a0[1])/self.a0[1]) < eps, 'This requires equal box size (conflict with a0[1]).'
+        assert abs((self.a0[2] - other_cell.a0[2])/self.a0[2]) < eps, 'This requires equal box size (conflict with a0[2]).'
+        assert abs((self.angles[0] - other_cell.angles[0])/self.angles[0]) < eps, 'This requires equal box angles (conflict with angles[0]).'
+        assert abs((self.angles[1] - other_cell.angles[1])/self.angles[1]) < eps, 'This requires equal box angles (conflict with angles[1]).'
+        assert abs((self.angles[2] - other_cell.angles[2])/self.angles[2]) < eps, 'This requires equal box angles (conflict with angles[2]).'
+        m = len(other_cell.l_atoms)
+        r_check = proximity * 1.1 # make the check range a bit larger than the proximity
+        fr_check = r_check * np.reciprocal(self.a0) # fractional check range radius
+        if m > 0:
+            for atj in other_cell.l_atoms:
+                f0 = atj.pos - fr_check # lower check box bounds
+                f1 = atj.pos - fr_check # upper check box bounds
+                l_rng = self.list_atoms_in_range({'rng_pos_a' : [f0[0], f1[0]], 'rng_pos_b' : [f0[1], f1[1]], 'rng_pos_c' : [f0[2], f1[2]]})
+                l_rem = self.remove_close_atoms(l_rng, proximity)
+                if len(l_rem) > 0: self.delete_atoms(l_rem) # delete
+            self.l_atoms.extend(other_cell.l_atoms) # extend atom list by atoms of other cell
+        return len(self.l_atoms)
 
     def list_positions(self, l_atoms_idx):
         """
@@ -726,7 +827,8 @@ class supercell:
         -------
 
             list
-                List of lists of atom indices
+                List of lists of atom indices, each sub-list is a set of atoms
+                that are closer to each other than proximity
         
         """
         l_close = []
@@ -736,11 +838,11 @@ class supercell:
         mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
         sdthr = proximity * proximity
         if (n > 1) and (m > 1): # need at least two atoms to check
-            for i in range(0, n):
+            for i in range(0, n-1): # loop over atoms in list, exclusive the last
                 idx = l_atoms_idx[i]
                 vlp0 = self.l_atoms[idx].pos
                 l_close_cur = [idx]
-                for j in range(i+1, n):
+                for j in range(i+1, n): # loop over atoms behind i in the list
                     jdx = l_atoms_idx[j]
                     vlp1 = self.l_atoms[jdx].pos
                     if periodic: # fractional distance vector across periodic boundary conditions
@@ -753,11 +855,76 @@ class supercell:
                         if debug: print('#{:d} {:s} <-> #{:d} {:s}: d = {:.4f} nm'.format(
                             idx, aty.atom_type_symbol[self.l_atoms[idx].Z],
                             jdx, aty.atom_type_symbol[self.l_atoms[jdx].Z], np.sqrt(sd)))
-                        l_close_cur.append(jdx)
+                        l_close_cur.append(jdx) # add to current list
                 # handle the current list of atoms close to atim idx
                 if len(l_close_cur) > 1: # at least a pair?
                     l_close.append(l_close_cur) # append to output list
                     if debug: print('added list', l_close_cur)
+        return l_close
+
+    def remove_close_atoms(self, l_atoms_idx, proximity, debug=False):
+        """
+
+        Returns a list of atom indices to be removed from l_atoms_idx. The removel is
+        not performed, so that l_atoms_idx remains unchanged by this routine.
+        The list is parsed in sequence, checking proximity between atom i and atom i + x.
+        Double checking should not occur in this implementation.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be checked for mutual proximity. Atoms not included
+                in the list will be ignored in the proximity checks.
+
+            proximity : float
+                Sets a threshold to which distance in nanometers is
+                identified as close.
+
+            debug : boolean, default: False
+                Switches extra debug text output.
+
+        Returns
+        -------
+
+            list
+                List of atom indices that are too close to one other member of
+                the input list. Removing those indices will leave a list where no
+                atom is closer than proximity to any other.
+
+        """
+        l_close = []
+        if debug: print('remove_close_atoms:')
+        assert isinstance(l_atoms_idx, list), 'Input <l_atoms_idx> should be a list of numbers.'
+        l_in = l_atoms_idx.copy() # make a copy to work with
+        n = len(l_in) # list of atom indices to check for proximity
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        sdthr = proximity * proximity
+        if debug: print('- number of input items:', n)
+        if (n > 1): # there are at least two atoms
+            for i in range(0, n-1): # loop over atoms in list, exclusive the last
+                idx = l_in[i]
+                vlp0 = self.l_atoms[idx].pos
+                l_rem = []
+                for j in range(i+1, n): # loop over atoms behind i in the list
+                    jdx = l_in[j]
+                    vlp1 = self.l_atoms[jdx].pos
+                    vdlp = vlp1 - vlp0 # fractional distance vector, no periodic boundary
+                    vdp = np.dot(mb0, vdlp) # distance vector in physical coordinates [nm]
+                    sd = np.dot(vdp, vdp) # square distance
+                    if sd <= sdthr: # squared distance check [nm**2]
+                        l_rem.append(j) # add local index to current removal list
+                        l_close.append(jdx) # add atom index to output removal list
+                # handle the current list of close atoms
+                if len(l_rem) > 0: # at least one atom is too close?
+                    if debug: print('- (', i, ') removing', len(l_rem), 'items ...')
+                    l_rem.reverse() # reverses the local index list, so to delete from the end downwards
+                    for j in l_rem: # loop local indices to remove from l_in
+                        del l_in[j] # delete from l_in
+                    n = len(l_in) # update lenth of l_lin
+                    if debug: print('- (', i, ') remaining items:', n)
+                if i >= n - 1: break # stop here, list has become too short
         return l_close
 
     def list_atoms_in_range(self, dic_range={}):
@@ -766,6 +933,8 @@ class supercell:
         Returns a list of indices of atoms in member l_atoms
         whose parameters are within in all of the ranges defined
         in the dictionary dic_range.
+
+        This is an alternative implementation
 
         Parameters
         ----------
@@ -804,37 +973,26 @@ class supercell:
         l_atoms_idx = [] # initialize empty list of selected atom indices
         n_atoms = len(self.l_atoms) # get number of atoms in the structure
         if n_atoms > 0:
-            l_atoms_idx = list(range(0, n_atoms)) # initialize with all atoms listed, corresponds to no conditions case
-            for sel_key in dic_range: # go through all conditions
-                l_bk = l_atoms_idx.copy()
-                min_val = min(dic_range[sel_key])
-                max_val = max(dic_range[sel_key])  
-                if sel_key == 'rng_Z': # remove all atoms not fulfilling atomic number range condition
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].Z < min_val) or (self.l_atoms[atom_idx].Z >= max_val):
-                            l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_charge': # remove atoms out of charge range
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].charge < min_val) or (self.l_atoms[atom_idx].charge >= max_val):
-                            l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_uiso': # remove atoms out of uiso range
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].uiso < min_val) or (self.l_atoms[atom_idx].uiso >= max_val):
-                            l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_occ': # remove atoms out of occupancy range
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].occ < min_val) or (self.l_atoms[atom_idx].occ >= max_val):
-                            l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_pos_a': # remove atoms out of position x range
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].pos[0] < min_val) or (self.l_atoms[atom_idx].pos[0] >= max_val):
-                            l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_pos_b': # remove atoms out of position y range
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].pos[1] < min_val) or (self.l_atoms[atom_idx].pos[1] >= max_val):
-                            l_atoms_idx.remove(atom_idx)
-                if sel_key == 'rng_pos_c': # remove atoms out of position z range
-                    for atom_idx in l_bk:
-                        if (self.l_atoms[atom_idx].pos[2] < min_val) or (self.l_atoms[atom_idx].pos[2] >= max_val):
-                            l_atoms_idx.remove(atom_idx)
+            for i in range(0, n_atoms): # loop over all atoms
+                ati = self.l_atoms[i]
+                b_add = True # assume adding and perform logical AND operations to turn it off in case of failing conditions
+                for sel_key in dic_range: # go through all conditions
+                    min_val = min(dic_range[sel_key])
+                    max_val = max(dic_range[sel_key])  
+                    if sel_key == 'rng_Z': # atomic number range condition
+                        b_add &= ((ati.Z >= min_val) and (ati.Z < max_val))
+                    if sel_key == 'rng_charge': # charge range
+                        b_add &= ((ati.charge >= min_val) and (ati.charge < max_val))
+                    if sel_key == 'rng_uiso': # uiso range
+                        b_add &= ((ati.uiso >= min_val) and (ati.uiso < max_val))
+                    if sel_key == 'rng_occ': # occupancy range
+                        b_add &= ((ati.occ >= min_val) and (ati.occ < max_val))
+                    if sel_key == 'rng_pos_a': # position x range
+                        b_add &= ((ati.pos[0] >= min_val) and (ati.pos[0] < max_val))
+                    if sel_key == 'rng_pos_b': # position y range
+                        b_add &= ((ati.pos[1] >= min_val) and (ati.pos[1] < max_val))
+                    if sel_key == 'rng_pos_c': # position z range
+                        b_add &= ((ati.pos[2] >= min_val) and (ati.pos[2] < max_val))
+                if b_add: # all conditions fullfilled ...
+                    l_atoms_idx.append(i) # add atom index to list
         return l_atoms_idx
