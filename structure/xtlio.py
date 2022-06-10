@@ -115,12 +115,12 @@ def write_XTL(sc, file, l_type_name_adds = []):
             # atom type paramaters
             if ionic:
                 sion = ato.get_str_from_charge(atty["ion"])
-                file_out.write("{:<5d}{:<10.3f}{:<10.3f}{:<11.5E}  {:s}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"],sion)) # number of atom types
+                file_out.write("{:<6d} {:<10.3f} {:<10.3f} {:<11.5E}  {:s}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"],sion)) # number of atom types
             else:
-                file_out.write("{:<5d}{:<10.3f}{:<10.3f}{:<11.5E}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"])) # number of atom types
+                file_out.write("{:<6d} {:<10.3f} {:<10.3f} {:<11.5E}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"])) # number of atom types
             # atom type sites
             for pos in atty["sites"]:
-                file_out.write("     {:<10.6f}{:<10.6f}{:<10.6f}\n".format(pos[0], pos[1], pos[2]))
+                file_out.write("       {:<10.6f} {:<10.6f} {:<10.6f}\n".format(pos[0], pos[1], pos[2]))
         file_out.write("\n")
         file_out.close()
     return io_err
