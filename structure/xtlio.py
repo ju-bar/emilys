@@ -70,7 +70,32 @@ from emilys.structure.supercell import supercell
 import emilys.structure.atom as ato
 import emilys.structure.atomtype as aty
 
-def write_XTL(sc, file, l_type_name_adds = []):
+def make_g_matrix(g1, g2, imax):
+    a1 = np.array(g1, dtype=int) # force basis vector of integer index
+    a2 = np.array(g2, dtype=int) # force basis vector of integer index
+    l_g = []
+    l_l = []
+    for j2 in range(-imax, imax+1):
+        v2 = a2 * j2
+        for j1 in range(-imax, imax+1):
+            v1 = a1 * j1
+            v = v1 + v2
+            lv = np.sqrt(np.dot(v, v))
+            li = -1
+            if len(l_l) > 0:
+                for i in range(0, len(l_l)):
+                    if l_l[i] > lv:
+                        li = i
+                        break
+            if li >= 0:
+                l_g.insert(li, v)
+                l_l.insert(li, lv)
+            else:
+                l_g.append(v)
+                l_l.append(lv)
+    return l_g
+
+def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
     """
 
     Writes atomic structure data in XTL file format.
@@ -88,6 +113,21 @@ def write_XTL(sc, file, l_type_name_adds = []):
             'occ' : adds occupancy
             'uiso' : adds the thermal vibration mean square amplitude
             'ion' : adds the ionic charge, also triggers ionic charge output
+        d_adds : dictionary
+            Dictionary for adding additional information to the XTL file.
+            Supported keys are
+            'ht' : adds a high tension value (kV) in the third line
+            'bragg' : adds scan and bragg vector lists, sub-list
+                'sz' : zone axis vector, 3d-vector, e.g. [0, 0, 1]
+                'sx' : scan vector 1, 3d-vector, e.g. [1, 0, 0]
+                'sy' : scan vector 2, 3d-vector, e.g. [0, 1, 0]
+                'g1' : bragg basis 1, 3d-vector, e.g. [1, 1, 0]
+                    perp to sz
+                'g2' : bragg basis 2, 3d-vector, e.g. [1, -1, 0]
+                    perp to sz, not colinear to g1
+                'gi_max' : max. bragg order to include, e.g. 5,
+                    this spans a matrix by g1 and g2 up to the given number of multiples
+                'gi_lim' : limits the length of the bragg vector list
     
     Returns
     -------
@@ -106,6 +146,8 @@ def write_XTL(sc, file, l_type_name_adds = []):
         file_out.write(sc.get_composition_str() + " (xtlio)\n")
         file_out.write("{:<11.6f}{:<11.6f}{:<11.6f}{:<10.4f}{:<10.4f}{:<10.4f}\n".format(
             sc.a0[0], sc.a0[1], sc.a0[2], sc.angles[0], sc.angles[1], sc.angles[2]))
+        if 'ht' in d_adds.keys(): # add high tension line
+            file_out.write("{:.5f}\n".format(d_adds['ht']))
         d = sc.get_type_dict(None, l_type_name_adds)
         natty = len(d.keys())
         file_out.write("{:d}\n".format(natty)) # number of atom types
@@ -121,6 +163,27 @@ def write_XTL(sc, file, l_type_name_adds = []):
             # atom type sites
             for pos in atty["sites"]:
                 file_out.write("       {:<10.6f} {:<10.6f} {:<10.6f}\n".format(pos[0], pos[1], pos[2]))
+        if 'bragg' in d_adds.keys(): # add scan and bragg list
+            d_b = d_adds['bragg']
+            vsz = d_b['sz']
+            vsx = d_b['sx']
+            vsy = d_b['sy']
+            gi_lim = 0
+            if (('g1' in d_b.keys()) and ('g2' in d_b.keys()) and ('gi_max' in d_b.keys())):
+                vg1 = d_b['g1']
+                vg2 = d_b['g2']
+                gi_max = d_b['gi_max']
+                gi_lim = 0
+                if 'gi_lim' in d_b.keys():
+                    gi_lim = d_b['gi_lim']
+                g_list = make_g_matrix(vg1, vg2, gi_max)
+            file_out.write("{:d}\n".format(min(gi_lim, len(g_list))))
+            file_out.write("   {:d}   {:d}   {:d}\n".format(vsz[0],vsz[1],vsz[2]))
+            file_out.write("   {:d}   {:d}   {:d}\n".format(vsx[0],vsx[1],vsx[2]))
+            file_out.write("   {:d}   {:d}   {:d}\n".format(vsy[0],vsy[1],vsy[2]))
+            for i in range(0, min(gi_lim, len(g_list))):
+                vg = g_list[i]
+                file_out.write("   {:d}   {:d}   {:d}\n".format(vg[0],vg[1],vg[2]))
         file_out.write("\n")
         file_out.close()
     return io_err
