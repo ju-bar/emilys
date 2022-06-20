@@ -3,6 +3,8 @@
 Created on Wed Aug 04 10:21:00 2021
 @author: ju-bar
 
+Modified on Mon Jun 20 11:48:00 2022 (ju-bar) added make_g_matrix, read_XTL
+
 Functions handling input and output of structure data
 via the XTL file format.
 
@@ -15,8 +17,15 @@ the lengths a, b, and c of the cell edges in nanometers and
 three more number setting the angles alpha, beta, and gamma
 in degrees between these edges.
 
-The third line defines the number of atom type definitions
-following as sequency below.
+The third line is the electron beam energy in keV (for most)
+of the programs reading XTL, but can be (in muSTEM) the number
+of atom-type definitions following as sequency below. The
+decision of which option is present in the file is made on reading
+line four. Line four is a number in case line three is a voltage,
+then line 4 is the number of atom types. Otherwise we find an
+atom type symbol in line 4. Care must be taken when checking the
+content of line four, since some strings, e.g. those containing a
+letter "e" or "E" could be mis-interpreted as a float number.
 
 An atom type definition consists of a variable number of text lines.
 The first of these lines sets a name for the atom type, which is
@@ -35,8 +44,8 @@ where B is assumed to be an isotropic temperature factor, so that
 <u**2> = (<u_x**2> + <u_y**2> + <u_z**2>)/3 with each Cartesian
 component assumed to contribute equally. If ionic potentials are needed,
 the charge of the ion can be added as fifth input, e.g. -1, +2, +1.3 etc.
-What follows then are a numbe rof lines equal to the first number of the
-preceeding line, which define atom positions by fractional coordinates
+What follows then are a number of lines equal to the first number of the
+preceding line, which define atom positions by fractional coordinates
 of the supercell, i.e. x/a  y/b  z/c.
 
 
@@ -65,10 +74,10 @@ published under the GNU General Publishing License, version 3
 """
 
 import re
+import copy
 import numpy as np
 from emilys.structure.supercell import supercell
 import emilys.structure.atom as ato
-import emilys.structure.atomtype as aty
 
 def make_g_matrix(g1, g2, imax):
     a1 = np.array(g1, dtype=int) # force basis vector of integer index
@@ -187,3 +196,80 @@ def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
         file_out.write("\n")
         file_out.close()
     return io_err
+
+def read_XTL(file, debug=False):
+    """
+    
+    Reads atomic structure data from a file assuming the XTL file format.
+
+    Parameters
+    ----------
+
+        file : str
+            Input file name.
+        debug : boolean, default: False
+            Flags debug print out of the file parsing.
+
+    Returns
+    -------
+
+        emilys.structure.supercell.supercell
+
+    """
+    assert type(file) is str, "This expects a string as input parameter."
+    # open the file and read the lines
+    with open(file) as file_in:
+        if debug: print('dbg (read_xtl): opened file [' + file + ']')
+        lines = []
+        for line in file_in:
+            lines.append(line)
+        file_in.close()
+    if debug: print('dbg (read_xtl): read ', len(lines),' lines of text.')
+    assert len(lines) > 3, "The input file doesn't contain sufficient number of text lines."
+    # create a supercell object
+    sc = supercell()
+    # process the cell parameters
+    l_cmp = re.split(' +|,|;|\t+', lines[1].strip()) # decompose to list of string
+    assert len(l_cmp) > 5, "The second line of the input file could not be split into >6 items."
+    if debug: print('dbg (read_xtl): supercell input line: ', l_cmp)
+    sc.a0 = np.array([float(l_cmp[0]),float(l_cmp[1]),float(l_cmp[2])]) # cell size in Angst
+    if debug: print('dbg (read_xtl): supercell size [A]: a = {:.5f}, a = {:.5f}, c = {:.5f}'.format(*sc.a0))
+    sc.angles = np.array([float(l_cmp[3]),float(l_cmp[4]),float(l_cmp[5])])
+    if debug: print('dbg (read_xtl): supercell angles [deg]: alpha = {:.4f}, beta = {:.4f}, gamma = {:.4f}'.format(*sc.angles))
+    natty = 0 # preset number of atom types
+    # determine option of line 3 using also line 4
+    if lines[3].strip().isdigit(): # line 4 is a number
+        ht = float(lines[2].strip()) # -> line 3 is the beam energy (or high tension)
+        sc.d_add['ht'] = ht # write to additional data dictionary
+        if debug: print('dbg (read_xtl): added beam energy [keV]: {:.4f}'.format(ht))
+        natty = int(lines[3].strip()) # get number of atom type definitions following line 4
+        i_line = 4 # first line of atom type data
+    else: # line 4 is not a number -> line 3 is the number of atom types
+        natty = int(lines[2].strip()) # get number of atom type definitions following line 3
+        i_line = 3 # first line of atom type data
+    if debug: print('dbg (read_xtl): number of atom types:', natty)
+    
+    if natty > 0 and i_line < len(lines): # there are atom types to read
+        for iatty in range(0, natty):
+            s_aty_label = lines[i_line].strip() # read atom type label (not used further)
+            i_line += 1
+            assert i_line < len(lines), "More data expected (atom type definition), file seems broken. (line #{:d})".format(i_line)
+            s_aty_def = lines[i_line].strip() # read the type definition string
+            i_line += 1
+            l_cmp = re.split(' +|,|;|\t+',s_aty_def) # decompose to list of strings
+            nat = int(l_cmp[0])
+            crg = 0.0
+            if len(l_cmp) > 4:
+                crg = float(l_cmp[4])
+            a = ato.atom(Z=int(float(l_cmp[1])), occ=float(l_cmp[2]), uiso=float(l_cmp[3]), charge=crg)
+            if nat > 0: # read atom positions
+                for iat in range(0, nat):
+                    assert i_line < len(lines), "More data expected (atom position), file seems broken. (line #{:d})".format(i_line)
+                    l_pos = re.split(' +|,|;|\t+', lines[i_line].strip())
+                    i_line += 1
+                    assert len(l_pos)>=3, "Three position values (fx, fy, fz), file seems broken. (line #{:d})".format(i_line)
+                    f_p = [float(l_pos[0]), float(l_pos[1]), float(l_pos[2])]
+                    b = ato.atom(Z=a.Z, occ=a.occ, uiso=a.uiso, charge=a.charge, pos=f_p)
+                    sc.l_atoms.append(b)
+    if debug: print('dbg (read_xtl): added ', len(sc.l_atoms), ' atoms to the supercell.')
+    return sc

@@ -3,6 +3,8 @@
 Created on Fri Apr 30 09:44:00 2021
 @author: ju-bar
 
+Modified on Mon Jun 20 11:50:00 2022 (ju-bar) adding additional data dict
+
 Functions and classes handling supercells of atomic structures
 
 This code is part of the 'emilys' repository
@@ -33,6 +35,8 @@ class supercell:
             call basis vectors in Angst
         l_atoms : list of atom objects
             atoms contained in the super cell
+        d_add : dictionary
+            additional data, depends on I/O routines
 
     Methods
     -------
@@ -129,6 +133,7 @@ class supercell:
         self.angles = np.array([90., 90., 90.]) # cell angles [alpha, beta, gamma] between [yz, zx, xy]
         self.basis = np.array([[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]]) # list of basis vectors x, y, z
         self.l_atoms = [] # list of atoms
+        self.d_add = {} # additional data
 
     def copy(self):
         return deepcopy(self)

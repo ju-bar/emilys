@@ -94,7 +94,7 @@ class atom:
     def get_type_name(self, l_type_name_adds = []):
         """
         
-        Returns a string for an atom type name with possible addistions
+        Returns a string for an atom type name with possible additions
         depending on other atom parameters.
         
         Parameters
