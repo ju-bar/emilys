@@ -299,7 +299,7 @@ class pixelgrid:
                     j1 = i1 % i_max[1] # periodic wrap
                 else:
                     if (i1 < 0 or i1 >= i_max[1]):
-                        continue; # skip out of bounds
+                        continue # skip out of bounds
                     j1 = i1
                 i2 = j1 * i_max[0]
                 for i0 in range(ni[0]-nir, ni[0]+nir+1): # loop input grid columns
