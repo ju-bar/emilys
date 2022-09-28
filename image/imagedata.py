@@ -257,6 +257,25 @@ def maxpos(array):
     j = int((imax-i)/nd[1])
     return np.array([i,j])
 #
+def minpos(array):
+    '''
+    Returns the index of the first array position with minimum value
+
+    Parameters:
+        array : numpy.ndarray int, float
+            list of values
+
+    Return:
+        numpy.array (2,)
+            (x,y) location of global minimum
+    '''
+    nd = array.shape
+    assert len(nd)==2, 'this works only for 2d arrays'
+    imax = np.argmin(array)
+    i = imax%nd[1]
+    j = int((imax-i)/nd[1])
+    return np.array([i,j])
+#
 def com(array):
     '''
     Returns the center of mass of image data

@@ -11,7 +11,7 @@ published under the GNU General Publishing License, version 3
 
 """
 # %%
-from numba import jit # include compilation support
+#from numba import jit # include compilation support
 import numpy as np
 from emilys.image.arrayplot import arrayplot2d
 from matplotlib.patches import Circle
