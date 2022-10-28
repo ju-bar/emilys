@@ -13,7 +13,6 @@ published under the GNU General Publishing License, version 3
 # %%
 import matplotlib.pyplot as plt # include mathematic plotting
 import numpy as np # include numeric functions
-import pylab # support to suppress output
 # %%
 def get_value_range(array, vrange=np.array([0.,1.]), vrangetype='default'):
     """
@@ -108,8 +107,6 @@ def arrayplot2d(array, pixscale=1, colscale='gray', dpi=72,
             figure and axes object used for plotting the array
 
     """
-    if hide:
-        pylab.ioff()
     nd = array.shape
     fig = plt.figure(figsize=(pixscale*nd[1]/dpi,pixscale*nd[0]/dpi), dpi=dpi)
     ax = fig.add_axes([0,0,1,1], frameon=False, aspect=1)
@@ -118,7 +115,7 @@ def arrayplot2d(array, pixscale=1, colscale='gray', dpi=72,
     ax.imshow(arrshow, cmap = colscale, origin = 'lower', vmin = rmin,
               vmax = rmax)
     if hide:
-        pylab.ion()
+        plt.close()
     return [fig,ax]
 
 #%%
