@@ -30,6 +30,7 @@ PHYS_QEL = 1.602176634E-19 # elementary charge [ C ]
 PHYS_HPLEV = 4.135667697E-15 # Planck's constant [ eV s ]
 PHYS_HBAR = 1.054571818E-34 # reduced Planck's constant [ J s ]
 PHYS_HBAREV = 6.582119570E-16 # reduced Planck's constant [ eV s ]
+PHYS_MASSU = 1.66053906660E-27 # atomic mass constant [kg]
 
 # Derived constants
 
