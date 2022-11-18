@@ -213,8 +213,9 @@ def polar_resample(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0.,2. * np
     nout[ld-1] = num_phi
     return image_out.reshape(nout)
 #
+#
 @numba.jit
-def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp):
+def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp, acc_norm = False):
     """
 
     Polar rebinning algorithm with simplified interface for the numba JIT compiler.
@@ -241,6 +242,8 @@ def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp):
             step size of the radial axis in the output in scaled units
         dp : float
             step size of the azimuth axis in the output in radians
+        acc_norm : boolean, default: False
+            flag to accumulate area normalization factors in the output
         
     """
     tpi = 2. * np.pi
@@ -248,8 +251,10 @@ def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp):
     #print("polar_rebin_core: ndim1:", nyx)
     nrp = img_pr.shape
     #print("polar_rebin_core: ndim2:", nrp)
-    r1 = r0 + nrp[0] * dr
-    p1 = p0 + nrp[1] * dp
+    numr = nrp[0]
+    nump = nrp[1]
+    r1 = r0 + numr * dr
+    p1 = p0 + nump * dp
     #print("polar_rebin_core: radial: ", [r0, r1, dr])
     #print("polar_rebin_core: azimuth: ", [p0, p1, dp])
     ix0 = min(nyx[1]-1, max(0, int(np.floor((x0 * dx - r1) / dx)))) # left pixel range clipped to image
@@ -259,6 +264,9 @@ def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp):
     #print("polar_rebin_core: roi:", [[ix0,iy0],[ix1,iy1]])
     r = 0.
     phi = 0.
+    img_pr[:,:] = 0.
+    #afac0 = (dx * dy) / (dr * dp)
+    apix = dx * dy # pixel area
     for j in range(iy0, iy1+1):
         y = (j - y0) * dy
         ysqr = y * y
@@ -268,13 +276,46 @@ def polar_rebin_core(img_xy, x0, y0, dx, dy, img_pr, r0, p0, dr, dp):
             if (r < r0 or r > r1): continue # skip pixels out of radial range
             phi = np.arctan2(y, x)
             if phi < 0: phi += tpi # bring phi to positive range
-            if (phi < p0 or phi > p1): continue # ot of azimuth range
-            jr = int(np.round((r - r0) / dr)) # round to next radial bin
-            jp = int(np.round((phi - p0) / dp)) # round to next azimuthal bin
-            if (jr >= 0 and jr < nrp[0] and jp >= 0 and jp < nrp[1]):
-                img_pr[jr,jp] += img_xy[j,i]
+            if (phi < p0 or phi > p1): continue # out of azimuth range
+            jr = int((r - r0) / dr) # determine index of the radial bin, jr = 0 is from r = r0 to r0 + dr
+            jp = int(np.round((phi - p0) / dp)) # determine index of the azimuthal bin, jp = 0 is from phi = 0 to phi = dp
+            if (jr >= 0 and jr < numr and jp >= 0 and jp < nump):
+                if acc_norm:
+                    img_pr[jr,jp] += apix # accumulate the input area contributing to the polar bin
+                else:
+                    img_pr[jr,jp] += img_xy[j,i] # accumulate the flux density
 #
-def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi], image_scale = [1., 1.]):
+@numba.jit
+def polar_normalize_core(img_pr, r_0, d_r, d_p, afac):
+    """
+
+    Polar binning renormalization interface for the numba JIT compiler.
+    
+    Parameters
+    ----------
+        img_pr : numpy.ndarray(shape=(nr,np),dtype=float)
+            in-/output image to be renormalized
+        r0 : float
+            start radius in from the cartesian origin in scaled units
+        dr : float
+            step size of the radial axis in the output in scaled units
+        dp : float
+            step size of the azimuth axis in the output in radians
+        afac : numpy.ndarray(shape=(nr,np),dtype=float)
+            normalization factors defining the area that contributed
+        
+    """
+    nrp = img_pr.shape
+    numr = nrp[0]
+    nump = nrp[1]
+    arp = d_r * d_p # common poler factor
+    for jr in range(0, numr):
+        rp = r_0 + (1.0 * jr + 0.5) * d_r # this is the bin mean radius
+        for jp in range(0, nump):
+            if afac[jr,jp] > 0.:
+                img_pr[jr,jp] = img_pr[jr,jp] * arp * rp / afac[jr,jp]
+#
+def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi], image_scale = [1., 1.], area_norm = False):
     """
 
     Transforms a 2D images to new grid in polar representation using a re-binning algorithm.
@@ -297,6 +338,14 @@ def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi]
         image_scale : float array of length 2
             scale (x, y) of the input image in physical units per pixel, e.g. nm/pixel
             default = [1., 1.]
+        area_norm : boolean, default: False
+            flags area re-normalization. This interprets the input as differential
+            f(x,y) dx dy in cartesian coordinates. Accumulation into each bin thus
+            corresponds an integral over an area N dx dy, where N is the number of
+            pixels added to a bin (it might be zero). The polar bin, however has
+            an aera of r dr dphi, where dr is the radial step and dphi is the
+            azimuthal step in radians. The output is then scaled by the fraction
+            (r dr dphi) / (N dx dy). If N == 0, no scaling is applied or needed.
 
     Returns
     -------
@@ -342,14 +391,21 @@ def polar_rebin(image, num_rad, num_phi, pole, rng_rad, rng_phi = [0., 2.*np.pi]
     d_p = rng_phi[1] / num_phi
     d_x = image_scale[0]
     d_y = image_scale[1]
-    image_out = np.zeros((nimg,num_rad,num_phi)) # polar data
+    image_out = np.zeros((nimg,num_rad,num_phi),dtype=float) # polar data
+    norm_pr = np.zeros((num_rad,num_phi),dtype=float)
     x_0 = p_org[0,0]
     y_0 = p_org[0,1]
+    if area_norm: # get the area factors
+        polar_rebin_core(img[0,:,:], x_0, y_0, d_x, d_y, norm_pr[:,:], r_0, p_0, d_r, d_p, acc_norm=True)
     for i in range(nimg):
         if (npol>1):
             x_0 = p_org[i,0]
             y_0 = p_org[i,1]
-        polar_rebin_core(img[i,:,:], x_0, y_0, d_x, d_y, image_out[i,:,:], r_0, p_0, d_r, d_p)
+            if area_norm: # get the local area factors since the origin is volatile for a series
+                polar_rebin_core(img[i,:,:], x_0, y_0, d_x, d_y, norm_pr[:,:], r_0, p_0, d_r, d_p, acc_norm=True)
+        polar_rebin_core(img[i,:,:], x_0, y_0, d_x, d_y, image_out[i,:,:], r_0, p_0, d_r, d_p) # get flux density integral
+        if area_norm: # area normalization
+            polar_normalize_core(image_out[i,:,:], r_0, d_r, d_p, norm_pr[:,:])
     nout = np.array(nd).astype(int)
     nout[ld-2] = num_rad
     nout[ld-1] = num_phi

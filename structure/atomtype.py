@@ -33,7 +33,9 @@ def Z_from_symb(symb):
     Example: Z_from_symb('Ti') -> 22.
 
     """
-    return [s.upper() for s in atom_type_symbol].index(symb.upper())
+    lsy = str(symb)
+    lsx = lsy.translate(lsy.maketrans(dict.fromkeys('+-.0123456789','')))
+    return [s.upper() for s in atom_type_symbol].index(lsx.upper())
 
 
 

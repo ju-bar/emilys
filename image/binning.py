@@ -258,7 +258,7 @@ class pixelgrid:
                 input grid that is compared to this grid
             i_max : array of 2 int
                 input grid maximum index (colmns, rows)
-            r_min : int, default -1
+            r_min : int, default 1
                 minimum search range, values smaller than 0 deactivate search range limit
             periodic : boolean, default: False
                 flags use of periodic boundary conditions
