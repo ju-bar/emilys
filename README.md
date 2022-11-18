@@ -2,14 +2,14 @@
 
 Electron Microscopy Image anaLYSis tools
 
-Version: 0.1.5
+Version: 0.1.6
 
 ## Authors and Copyright
 
 Juri Barthel, 
 Forschungszentrum Jülich GmbH, 52425 Jülich, Germany
 
-Copyright (c) 2019 - 2021 - Forschungszentrum Jülich GmbH
+Copyright (c) 2019 - 2022 - Forschungszentrum Jülich GmbH
    
 Published under the GNU General Public License, version 3,
 see <http://www.gnu.org/licenses/> and LICENSE!
@@ -24,6 +24,9 @@ If you just want to use it, install via
 
 ## Changes
 
+* Version 0.1.6:
+Modified a lot of functions. There are some functions in the structure section
+which are incomplete and under development. Use them with care.
 * Version 0.1.5:
 Added debug to emilys.image.peakfit.fit_local_gauss_2d. 
 Added sub-package structure for handling atomic structure models used in TEM simulations.
