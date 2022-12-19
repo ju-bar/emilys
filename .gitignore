@@ -9,4 +9,4 @@
 # Python cache
 __pycache__/
 *.pyc
-.vscode/settings.json
+.vscode/
