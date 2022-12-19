@@ -113,12 +113,12 @@ class supercell:
 
         list_close_atoms(l_atoms_idx, proximity, periodic):
             Returns a list of lists of atoms, which are closer than the
-            proximity parameter in nanometers. The periodic option switches
+            proximity parameter in Angstroms. The periodic option switches
             the check of proximity under periodic boundary conditions.
 
         remove_close_atoms(l_atoms_idx, proximity):
             Returns a list of atom indices to be removed from l_atoms_idx.
-            The removel is not performed, so that l_atoms_idx remains 
+            The remove is not performed, so that l_atoms_idx remains 
             unchanged by this routine.
 
         list_atoms_in_range(dic_range):
@@ -818,12 +818,12 @@ class supercell:
                 in the list will be ignored in the proximity checks.
 
             proximity : float
-                Sets a threshold to which distance in nanometers is
+                Sets a threshold to which distance in Angstroms is
                 identified as close.
 
             periodic : boolean, default: True
                 Switches proximity checks under periodic boundary
-                condistions.
+                conditions.
 
             debug : boolean, default: False
                 Switches extra debug text output.
@@ -870,7 +870,7 @@ class supercell:
     def remove_close_atoms(self, l_atoms_idx, proximity, debug=False):
         """
 
-        Returns a list of atom indices to be removed from l_atoms_idx. The removel is
+        Returns a list of atom indices to be removed from l_atoms_idx. The remove is
         not performed, so that l_atoms_idx remains unchanged by this routine.
         The list is parsed in sequence, checking proximity between atom i and atom i + x.
         Double checking should not occur in this implementation.
@@ -884,7 +884,7 @@ class supercell:
                 in the list will be ignored in the proximity checks.
 
             proximity : float
-                Sets a threshold to which distance in nanometers is
+                Sets a threshold to which distance in Angstroms is
                 identified as close.
 
             debug : boolean, default: False
