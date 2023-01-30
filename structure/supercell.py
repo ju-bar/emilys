@@ -13,7 +13,6 @@ published under the GNU General Publishing License, version 3
 
 """
 
-import os, sys
 import numpy as np
 import emilys.structure.atomtype as aty
 from emilys.structure.atom import atom, get_str_from_charge
@@ -116,6 +115,12 @@ class supercell:
             proximity parameter in Angstroms. The periodic option switches
             the check of proximity under periodic boundary conditions.
 
+        list_close_atoms_ref(pos, l_atoms_idx, proximity, periodic):
+            Returns a list indices in l_atoms, for atoms which are closer
+            to pos_ref than the proximity parameter in Angstroms.
+            The periodic option switches the check of proximity under
+            periodic boundary conditions.
+
         remove_close_atoms(l_atoms_idx, proximity):
             Returns a list of atom indices to be removed from l_atoms_idx.
             The remove is not performed, so that l_atoms_idx remains 
@@ -125,6 +130,11 @@ class supercell:
             Returns a list of atoms which parameters fall into all range
             specifications listed in the dictionary dic_range. See the
             function definition on how to setup the dictionary.
+
+        dice_occupancy(l_atoms_idx, proximity, periodic):
+            Randomly selects, which site realizes full occupancy from sites
+            in list l_atoms_idx and replaces partial site occupation by
+            full atom occupations.
 
     """
 
@@ -867,6 +877,65 @@ class supercell:
                     if debug: print('added list', l_close_cur)
         return l_close
 
+    def list_close_atoms_ref(self, pos, l_atoms_idx, proximity, periodic=True, debug=False):
+        """
+
+        Returns a list of lists of atoms, which are closer than the
+        proximity parameter in nanometers. The periodic option switches
+        the check of proximity under periodic boundary conditions.
+
+        Parameters
+        ----------
+
+            pos : numpy ndarray((3),float)
+                Reference position in fractional cell coordinates. 
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be checked for mutual proximity. Atoms not included
+                in the list will be ignored in the proximity checks.
+
+            proximity : float
+                Sets a threshold to which distance in Angstroms is
+                identified as close.
+
+            periodic : boolean, default: True
+                Switches proximity checks under periodic boundary
+                conditions.
+
+            debug : boolean, default: False
+                Switches extra debug text output.
+
+        Returns
+        -------
+
+            list
+                List of atom indices for atoms closer to pos than
+                proximity
+        
+        """
+        l_close = []
+        assert isinstance(l_atoms_idx, list), 'Input <l_atoms_idx> should be a list of numbers.'
+        n = len(l_atoms_idx) # list of atom indices to check for proximity
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        sdthr = proximity * proximity
+        if n > 0: # need at least one atom to check
+            for i in range(0, n): # loop over atoms in list
+                idx = l_atoms_idx[i]
+                vlp = self.l_atoms[idx].pos
+                if periodic: # fractional distance vector across periodic boundary conditions
+                    vdlp = ((vlp - pos + 0.5) % 1.0 ) - 0.5
+                else: # fractional distance vector, no periodic boundary
+                    vdlp = vlp - pos
+                vdp = np.dot(mb0, vdlp) # distance vector in physical coordinates [A]
+                sd = np.dot(vdp, vdp)
+                if sd <= sdthr: # squared distance check [nm**2]
+                    if debug:
+                        print('- #{:d} {:s}: d = {:.4f} nm'.format(
+                            idx, aty.atom_type_symbol[self.l_atoms[idx].Z],np.sqrt(sd)))
+                    l_close.append(idx) # add to list
+        return l_close
+
     def remove_close_atoms(self, l_atoms_idx, proximity, debug=False):
         """
 
@@ -948,7 +1017,9 @@ class supercell:
                 dictionary of range definitions
                 supported range keys are
                 'rng_Z' : [int, int]
-                    atomic numbers
+                    range of atomic numbers
+                'lst_Z' : list of int
+                    list of atomic numbers
                 'rng_charge' : [float, float]
                     ionic charges
                 'rng_pos_a' : [float, float]
@@ -957,6 +1028,8 @@ class supercell:
                     fractional atom position along cell b axis
                 'rng_pos_c' : [float, float]
                     fractional atom position along cell c axis
+                'rng_pos_r' : [[float, float, float], float]
+                    fractional atom 3d position, radius in Angs
                 'rng_uiso' : [float, float]
                     thermal vibration amplitudes
                 'rng_occ' : [float, float]
@@ -977,6 +1050,13 @@ class supercell:
         """
         l_atoms_idx = [] # initialize empty list of selected atom indices
         n_atoms = len(self.l_atoms) # get number of atoms in the structure
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        sdthr = 0.
+        pos_ref = np.array([0., 0., 0.])
+        if 'rng_pos_r' in dic_range:
+            pos_ref = np.dot(mb0, dic_range['rng_pos_r'][0]) # reference position [A]
+            proximity = dic_range['rng_pos_r'][1] # distance in [A]
+            sdthr = proximity * proximity
         if n_atoms > 0:
             for i in range(0, n_atoms): # loop over all atoms
                 ati = self.l_atoms[i]
@@ -986,6 +1066,8 @@ class supercell:
                     max_val = max(dic_range[sel_key])  
                     if sel_key == 'rng_Z': # atomic number range condition
                         b_add &= ((ati.Z >= min_val) and (ati.Z < max_val))
+                    if sel_key == 'lst_Z': # atomic number list condition
+                        b_add &= (ati.Z in dic_range[sel_key])
                     if sel_key == 'rng_charge': # charge range
                         b_add &= ((ati.charge >= min_val) and (ati.charge < max_val))
                     if sel_key == 'rng_uiso': # uiso range
@@ -998,6 +1080,97 @@ class supercell:
                         b_add &= ((ati.pos[1] >= min_val) and (ati.pos[1] < max_val))
                     if sel_key == 'rng_pos_c': # position z range
                         b_add &= ((ati.pos[2] >= min_val) and (ati.pos[2] < max_val))
-                if b_add: # all conditions fullfilled ...
+                    if sel_key == 'rng_pos_r': # distance in A
+                        dpos = np.dot(mb0, ati.pos) - pos_ref
+                        sd = np.dot(dpos, dpos) # square distance [A^2]
+                        b_add &= (sd <= sdthr)
+                if b_add: # all conditions fulfilled ...
                     l_atoms_idx.append(i) # add atom index to list
         return l_atoms_idx
+
+    def dice_occupancy(self, l_atoms_idx, proximity=0.01, periodic=True, debug=False):
+        """
+
+        Randomly selects, which site realizes full occupancy from sites
+        in list l_atoms_idx and replaces partial site occupation by
+        full atom occupations. This function modifies the list of atoms.
+        This means, the input list of indices becomes invalid afterwards.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                to be checked for mutual proximity and occupancy selection.
+                Atoms not included in the list will be ignored in the proximity
+                checks.
+
+            proximity : float, default: 0.01
+                Sets a threshold to which distance in Angstroms is
+                identified as close.
+
+            periodic : boolean, default: True
+                Switches proximity checks under periodic boundary
+                conditions.
+
+            debug : boolean, default: False
+                Switches extra debug text output.
+
+        Returns
+        -------
+
+            None
+        
+        """
+        l_del = [] # list of atom indices to delete from the cell
+        l_atoms_occ = [] # list of atom data to insert to l_atoms
+        assert isinstance(l_atoms_idx, list), 'Input <l_atoms_idx> should be a list of numbers.'
+        l_work = deepcopy(l_atoms_idx) # working list, this will get smaller as we go
+        while len(l_work) > 0:
+            idx = l_work[0] # get the index of the atom in l_atoms
+            if self.l_atoms[idx].occ >= 1.0: # no dicing for atoms at full occupancy
+                del l_work[0]
+                continue
+            pos_ref = self.l_atoms[idx].pos
+            l_close = self.list_close_atoms_ref(pos_ref, l_work, proximity, periodic, debug)
+            if len(l_close)==0: # remove this bad case, not handled
+                del l_work[0]
+                continue
+            if debug:
+                print('- working on group of {:d} sites at position'.format(len(l_close)), pos_ref)
+            # setup occupancy thresholds
+            l_occ_thr = []
+            l_occ_total = 0.0
+            for jdx in l_close:
+                l_occ_total += self.l_atoms[jdx].occ
+                if debug:
+                    print('- #{:d}: occ={:.3f} -> total={:.3f}'.format(jdx, self.l_atoms[jdx].occ,l_occ_total))
+                l_occ_thr.append(l_occ_total)
+            if l_occ_total > 1.0:
+                print('Warning (dice_occupancy): total occupancy >1 ({:.3f}) in proximity {:.3f} A of atom #{:d}.'.format(l_occ_total, proximity, idx))
+            vrnd = np.random.rand() # random number [0,1)
+            kdx = -1 # default occupation selector is None
+            for j in range(0, len(l_occ_thr)): # find the occupation threshold which is bigger than vrnd
+                if vrnd < l_occ_thr[j]:
+                    kdx = l_close[j] # found site to fully occupy
+                    break # stop looking further
+            if kdx >= 0: # found something to occupy
+                at_keep = deepcopy(self.l_atoms[kdx]) # this is the atom to keep
+                at_keep.occ = 1.0 # fully occupy
+                l_atoms_occ.append(at_keep) # store in list
+                if debug:
+                    print('- group of {:d} sites at position'.format(len(l_close)), 
+                        pos_ref, 'occupied by ' + aty.atom_type_symbol[at_keep.Z] + 
+                        ' at position', at_keep.pos)
+            else:
+                if debug:
+                    print('- group of {:d} sites at position'.format(len(l_close)), 
+                        pos_ref, 'not occupied.')
+            l_del = l_del + l_close # add the current close group of sites to those to be deleted
+            for jdx in l_close: # remove close group of sites from work list
+                l_work.remove(jdx)
+        if len(l_del) > 0: # atoms to delete from the cell
+            self.delete_atoms(l_del) # deletion
+        if len(l_atoms_occ) > 0: # append fully occupied atoms
+            self.l_atoms = self.l_atoms + l_atoms_occ
+        return

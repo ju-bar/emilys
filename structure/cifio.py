@@ -115,8 +115,11 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-import re
+import json
+import importlib.resources
+from copy import deepcopy
 import numpy as np
+import emilys.structure
 from emilys.structure.supercell import supercell
 import emilys.structure.atom as ato
 import emilys.structure.atomtype as aty
@@ -168,6 +171,7 @@ d_cif_types = { # CIF data block type dictionary
 d_cif_tables = {
     'symmetry_equiv_pos' : {
         'threshold' : 1.0,
+        'cap' : 10,
         '_symmetry_equiv_pos_site_id' : 0.4,
         '_symmetry_equiv_pos_as_xyz' : 1.0,
         '_space_group_symop_id' : 0.4,
@@ -436,6 +440,51 @@ def get_CIF_symop(s):
         v[3,2] = v3[3]
     return v
 
+def make_CIF_symop_table(sgn, subgn=1):
+    """
+
+    Returns a dictionary defining a space group table for CIF
+    from the input space group number sgn
+
+    Parameters
+    ----------
+
+        sgn : int or str
+            Space group number in the international tables
+            as in CIF '_symmetry_Int_Tables_number'
+
+        subgn : int or str, default: 1
+            Sub-group number
+
+    Returns
+    -------
+
+        dict
+
+    """
+    d = {}
+    with importlib.resources.open_binary(emilys.structure, 'sgops.json') as f_sg:
+        d_sg = json.load(f_sg)
+    str_sgn = str(sgn)
+    str_sub = str(subgn)
+    if str_sgn in d_sg:
+        du = d_sg[str_sgn]
+        if str_sub in du["sub"]:
+            dus = du["sub"][str_sub]
+            d['name'] = 'symmetry_equiv_pos'
+            d['column'] = ['_space_group_symop_id', '_space_group_symop_operation_xyz']
+            d['data'] = []
+            dus_ops = dus["operation"]
+            for sop in dus_ops:
+                d['data'].append([sop, dus_ops[sop]])
+        else:
+            print('Error (make_CIF_symop_table): Unknown sub-group (', subgn, ') in space group number: ', sgn)    
+        
+    else:
+        print('Error (make_CIF_symop_table): Unknown space group number: ', sgn)
+    return d
+
+
 def read_CIF(file, debug=False):
     """
 
@@ -541,11 +590,25 @@ def read_CIF(file, debug=False):
 
 def write_CIF_qm(s):
     """
+    Puts quotation marks around strings (if not already present)
     """
-    rs = str(s)
+    if type(s) is str: # input is a string
+        rs = s.strip()
+        n = len(rs)
+        if rs.find("'") == 0 and rs.rfind("'") == n-1: # input is already enclosed by 's
+            return rs
+        if rs.find('"') == 0 and rs.rfind('"') == n-1: # input is already enclosed by "s
+            return rs
+        if rs.find("'") > 0: # input contains '
+            return '"' + rs + '"'
+        if rs.find('"') > 0: # input contains "
+            return "'" + rs + "'"
+        return "'" + rs + "'"
+    else: # not a a str
+        rs = str(s)
     if rs.find(' ') >= 0: # contains spaces?
         if rs.find("'") >= 0: # contains single qm?
-            return '"' + rs + '"' # put in souble quotes
+            return '"' + rs + '"' # put in double quotes
         else:
             return "'" + rs + "'" # put in single quotes
     return rs
@@ -575,31 +638,59 @@ def write_CIF(d_cif, file, debug=False):
     io_err = 0
     assert isinstance(file, str), 'This expects that file is input of type str'
     with open(file, "w") as file_out:
+        if debug: print('dbg (write_cif): opened file ' + file + 'for writing')
         file_out.write("# (cifio)\n")
+        if debug: print('dbg (write_cif): writing basic cell information')
         for str_CIF_key in d_cif:
             if str_CIF_key == 'tables': continue # skip tables
             file_out.write(str_CIF_key + " " + write_CIF_qm(d_cif[str_CIF_key]) + "\n")
         file_out.write("\n")
         if 'tables' in d_cif:
+            if debug: print('dbg (write_cif): writing tables ... ')
             for str_CIF_tab in d_cif['tables']:
+                if debug: print('dbg (write_cif): writing table ' + str_CIF_tab)
                 d_table = d_cif['tables'][str_CIF_tab]
                 if d_table['name'] == 'unknown':
                     file_out.write("# table\n")
                 else:
                     file_out.write("# table " + str(d_table['name']) + "\n")
-                file_out.write("loop_\n")
-                for str_col in d_table['column']:
-                    file_out.write(str_col + "\n")
-                for l_row in d_table['data']:
-                    ll = list(l_row)
-                    for i in range(0, len(ll)):
-                        ll[i] = write_CIF_qm(ll[i])
-                    file_out.write(' '.join(ll) + "\n")
-                file_out.write("\n")
+                if ('column' in d_table) and ('data' in d_table):
+                    file_out.write("loop_\n")
+                    if debug: print('dbg (write_cif): writing table ' + str_CIF_tab + ' /', len(d_table['column']), 'columns')
+                    for str_col in d_table['column']:
+                        file_out.write(str_col + "\n")
+                    if debug: print('dbg (write_cif): writing table ' + str_CIF_tab + ' / ', len(d_table['data']), 'rows')
+                    for l_row in d_table['data']:
+                        ll = list(l_row)
+                        for i in range(0, len(ll)):
+                            ll[i] = write_CIF_qm(ll[i])
+                        file_out.write(' '.join(ll) + "\n")
+                    file_out.write("\n")
         file_out.write("#End_(cifio)\n")
     return io_err
 
-def get_CIF_atom_sites(d_cif):
+def get_CIF_atom_site_oxidation(atom_site_type_symbol, d_types, debug=False):
+    """
+    Returns the oxidation number of an atom type for a given atom_site_type_symbol.
+    Returns 0 if the atom_site_type_symbol is not one of those listed as
+    _atom_type_symbol in the type dictionary d_types.
+    """
+    ion = 0.0
+    if ('data' in d_types) and ('column' in d_types):
+        if ('_atom_type_symbol' in d_types['column']) and ('_atom_type_oxidation_number' in d_types['column']):
+            ikey_ts = d_types['column'].index('_atom_type_symbol')
+            ikey_os = d_types['column'].index('_atom_type_oxidation_number')
+            for atype in d_types['data']:
+                if debug: print('dbg (get_cif_atom_site_oxidation): checking ', atype[ikey_ts])
+                if atype[ikey_ts] == atom_site_type_symbol:
+                    return get_CIF_float(atype[ikey_os])
+        else:
+            if debug: print('dbg (get_cif_atom_site_oxidation): missing columns _atom_type_symbol and/or _atom_type_oxidation_number in d_types dictionary input.')
+    else:
+        if debug: print('dbg (get_cif_atom_site_oxidation): missing content in d_types dictionary input.')
+    return ion
+
+def get_CIF_atom_sites(d_cif, debug=False):
     l_as = []
     if 'tables' in d_cif:
         d_as = {}
@@ -608,24 +699,51 @@ def get_CIF_atom_sites(d_cif):
         for str_tab in d_cif['tables']:
             if d_cif['tables'][str_tab]['name'] == 'atom_site':
                 d_as = d_cif['tables'][str_tab]
+                if debug: print('dbg (get_cif_atom_sites): found atom_site table')
             if d_cif['tables'][str_tab]['name'] == 'atom_type':
                 d_at = d_cif['tables'][str_tab]
+                if debug: print('dbg (get_cif_atom_sites): found atom_type table')
             if d_cif['tables'][str_tab]['name'] == 'atom_site_aniso':
                 d_aniso = d_cif['tables'][str_tab]
+                if debug: print('dbg (get_cif_atom_sites): found atom_site_aniso table')
         if ('data' in d_as) and ('column' in d_as):
             l_col = list(d_as['column'])
+            if debug: print('dbg (get_cif_atom_sites): processing found atom_site table ...')
+            if debug: print('dbg (get_cif_atom_sites): - #columns =', len(l_col))
+            if debug: print('dbg (get_cif_atom_sites): - #rows =', len(d_as['data']))
             for asite in d_as['data']:
+                if debug: print('dbg (get_cif_atom_sites): ', asite)
                 a = ato.atom()
+                # atom type name (symbol)
                 str_key = '_atom_site_type_symbol'
-                i_key = l_col.index(str_key)
-                if i_key < 0:
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
+                    str_symb = str(asite[i_key])
+                else:
                     print('Error (get_CIF_atom_sites): Missing key [' + str_key + '] in table of atom sites.')
                     break
-                str_symb = str(asite[i_key])
                 a.Z = aty.Z_from_symb(str_symb)
-                str_key = '_atom_site_type_occupancy'
-                i_key = l_col.index(str_key)
-                if i_key >= 0:
+                if debug: print('dbg (get_cif_atom_sites): _atom_site_type_symbol =', str_symb)
+                # ionic charge via _atom_site_type_symbol from possible type table
+                a.ion = get_CIF_atom_site_oxidation(str_symb, d_at, debug=debug)
+                if debug: print('dbg (get_cif_atom_sites): oxidation number =', a.ion)
+                # position
+                str_key = '_atom_site_fract_x'
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
+                    a.pos[0] = get_CIF_float(asite[i_key])
+                str_key = '_atom_site_fract_y'
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
+                    a.pos[1] = get_CIF_float(asite[i_key])
+                str_key = '_atom_site_fract_z'
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
+                    a.pos[2] = get_CIF_float(asite[i_key])
+                # occupancy
+                str_key = '_atom_site_occupancy'
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
                     a.occ = get_CIF_float(asite[i_key])
                 else:
                     a.occ = float(1.0)
@@ -634,54 +752,58 @@ def get_CIF_atom_sites(d_cif):
                 # - check for specific adp type definition
                 str_adp_type = "unknown"
                 str_key = '_atom_site_adp_type'
-                i_key = l_col.index(str_key)
-                if i_key >= 0:
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
                     str_adp_type = str(asite[i_key])
                 str_key = '_atom_site_thermal_displace_type'
-                i_key = l_col.index(str_key)
-                if i_key >= 0:
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
                     str_adp_type = str(asite[i_key])
                 # - check for Biso column
                 str_key = '_atom_site_B_iso_or_equiv'
-                i_key = l_col.index(str_key)
-                if i_key >= 0:
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
                     val = get_CIF_float(asite[i_key])
-                    if str_adp_type == "unknown":
+                    if str_adp_type == "unknown": # default to Biso
                         str_adp_type = "Biso"
-                    if str_adp_type == "Uiso":
+                    if str_adp_type == "Uiso": # ignore value label, assume Usio
                         a.uiso = val
                     elif str_adp_type == "Biso":
                         a.uiso = val / (8. * np.pi**2) # translate from Biso input to Uiso stored
                 # - check for Uiso column
                 str_key = '_atom_site_U_iso_or_equiv'
-                i_key = l_col.index(str_key)
-                if i_key >= 0:
-                    if str_adp_type == "unknown":
+                if str_key in l_col:
+                    i_key = l_col.index(str_key)
+                    if str_adp_type == "unknown": # default to Usio
                         str_adp_type = "Uiso"
                     val = get_CIF_float(asite[i_key]) # uiso input
                     if str_adp_type == "Uiso":
                         a.uiso = val
-                    elif str_adp_type == "Biso":
+                    elif str_adp_type == "Biso": # ignore label, interpret as Biso
                         a.uiso = val / (8. * np.pi**2) # translate from Biso input to Uiso stored
                 # - check anisotropic table and override if available for current atom type
-                
+                # TODO
+                #
                 # read charge (oxidation state if possible)
                 if ('data' in d_at) and ('column' in d_at):
                     l_col_type = list(d_at['column'])
                     for atype in d_at['data']:
                         str_key_type = '_atom_type_symbol'
-                        i_key_type = l_col_type.index(str_key_type)
-                        str_symb_type = str(atype[i_key_type])
-                        if str_symb_type == str_symb: # found type match?
-                            str_key_type = '_atom_type_oxidation_number'
+                        if str_key_type in l_col_type:
                             i_key_type = l_col_type.index(str_key_type)
-                            if i_key_type >= 0:
-                                a.charge = get_CIF_float(atype[i_key_type])
-                            else:
-                                a.charge = float(0.)
-                            break
+                            str_symb_type = str(atype[i_key_type])
+                            if str_symb_type == str_symb: # found type match?
+                                str_key_type = '_atom_type_oxidation_number'
+                                if str_key_type in l_col_type:
+                                    i_key_type = l_col_type.index(str_key_type)
+                                    a.charge = get_CIF_float(atype[i_key_type])
+                                else:
+                                    a.charge = float(0.)
+                                break
                 else:
                     a.charge = float(0.)
+                l_as.append(deepcopy(a))
+                del a
         else: # problem, no sites
             print('Error (get_CIF_atom_sites): No table of atom sites.')
     return l_as
@@ -689,6 +811,10 @@ def get_CIF_atom_sites(d_cif):
 def get_CIF_atom_sites_P1(d_cif):
     l_as_P1 = []
     l_as = get_CIF_atom_sites(d_cif) # get list of atom sites using atom objects
+    # apply symmetry operations and transform to spacegroup P1
+    # TODO: implement the use of symmetry operations (SG (in) -> P1 (out))
+    # (assume P1)
+    l_as_P1 = l_as
     return l_as_P1
 
 def CIF_to_supercell(d_cif):
@@ -702,3 +828,60 @@ def CIF_to_supercell(d_cif):
     sc.basis = sc.get_basis()
     sc.l_atoms = get_CIF_atom_sites_P1(d_cif) # get the atom site list in space group P1
     return sc
+
+def supercell_to_CIF(sc):
+    """
+
+        This writes structure information from the supercell
+        sc to a dictionary for cifio
+
+    """
+    d = {} # init
+    d['_cell_length_a'] = sc.a0[0]
+    d['_cell_length_b'] = sc.a0[1]
+    d['_cell_length_c'] = sc.a0[2]
+    d['_cell_angle_alpha'] = sc.angles[0]
+    d['_cell_angle_beta'] = sc.angles[1]
+    d['_cell_angle_gamma'] = sc.angles[2]
+    d['_space_group_name_H-M_alt'] = 'P 1'
+    d['_space_group_IT_number'] = 1
+    d['_chemical_formula_sum'] = sc.get_composition_str()
+    d['tables'] = {}
+    d['tables']['0'] = make_CIF_symop_table(1, 1)
+    d_types = sc.get_type_dict(l_type_name_adds=['ion'])
+    l_types = list(d_types.keys()) # list of the atom type symbols
+    d['tables']['1'] = {
+        'name' : 'atom_type',
+        'column' : ['_atom_type_symbol', '_atom_type_oxidation_number'],
+        'data' : []
+    }
+    for str_aty in d_types:
+        d['tables']['1']['data'].append([str_aty, d_types[str_aty]['ion']])
+    d['tables']['2'] = {
+        'name' : 'atom_site',
+        'column' : [
+            '_atom_site_label',
+            '_atom_site_type_symbol',
+            '_atom_site_occupancy',
+            '_atom_site_fract_x',
+            '_atom_site_fract_y',
+            '_atom_site_fract_z',
+            '_atom_site_thermal_displace_type',
+            '_atom_site_U_iso_or_equiv'
+        ],
+        'data' : []
+    }
+    for ato in sc.l_atoms:
+        str_sy = ato.get_type_name() # pure symbol
+        str_symb = ato.get_type_name(l_type_name_adds=['ion']) #  symbol with oxidation state
+        # generate the label number
+        isymb = l_types.index(str_symb)
+        nlabel = 0
+        for i in range(0, len(l_types)):
+            if str_sy in l_types[i]:
+                nlabel += 1
+                if i == isymb:
+                    break
+        str_label = str_sy + str(nlabel)
+        d['tables']['2']['data'].append([str_label, str_symb, ato.occ, ato.pos[0], ato.pos[1], ato.pos[2], 'Uiso', ato.uiso])
+    return d
