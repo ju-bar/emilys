@@ -588,25 +588,40 @@ def read_CIF(file, debug=False):
     if debug: print('dbg (read_cif):', sum(l_handled), 'of', len(lines), 'lines handled after scalar parameter reading.')
     return d_cif
 
-def write_CIF_qm(s):
+def write_CIF_qm(s, force=False):
     """
-    Puts quotation marks around strings (if not already present)
+    Puts quotation marks around strings containing white spaces.
+    May be forced by the force flag.
+
+    Parameters
+    ----------
+        s : any
+            input
+        force : boolean, default: False
+            Flag for forcing to enclose the output by quotation marks.
+
+    Returns
+    -------
+        str
+            Quotation marks may have been added.
+
     """
-    if type(s) is str: # input is a string
-        rs = s.strip()
-        n = len(rs)
-        if rs.find("'") == 0 and rs.rfind("'") == n-1: # input is already enclosed by 's
-            return rs
-        if rs.find('"') == 0 and rs.rfind('"') == n-1: # input is already enclosed by "s
-            return rs
-        if rs.find("'") > 0: # input contains '
-            return '"' + rs + '"'
-        if rs.find('"') > 0: # input contains "
-            return "'" + rs + "'"
-        return "'" + rs + "'"
-    else: # not a a str
-        rs = str(s)
-    if rs.find(' ') >= 0: # contains spaces?
+    # if type(s) is str: # input is a string
+    #     rs = s.strip()
+    #     n = len(rs)
+    #     if rs.find("'") == 0 and rs.rfind("'") == n-1: # input is already enclosed by 's
+    #         return rs
+    #     if rs.find('"') == 0 and rs.rfind('"') == n-1: # input is already enclosed by "s
+    #         return rs
+    #     if rs.find("'") > 0: # input contains '
+    #         return '"' + rs + '"'
+    #     if rs.find('"') > 0: # input contains "
+    #         return "'" + rs + "'"
+    #     return "'" + rs + "'"
+    # else: # not a a str
+    #     rs = str(s)
+    rs = str(s)
+    if (rs.find(' ') >= 0) or (rs.find(',') >= 0) or (rs.find(';') >= 0) or force: # contains spaces or force qm?
         if rs.find("'") >= 0: # contains single qm?
             return '"' + rs + '"' # put in double quotes
         else:
@@ -674,6 +689,21 @@ def get_CIF_atom_site_oxidation(atom_site_type_symbol, d_types, debug=False):
     Returns the oxidation number of an atom type for a given atom_site_type_symbol.
     Returns 0 if the atom_site_type_symbol is not one of those listed as
     _atom_type_symbol in the type dictionary d_types.
+
+    Parameters
+    ----------
+        atom_site_type_symbol : str
+            Symbol identifying the atom type in the atom_type table.
+        d_types : dict
+            Dictionary of atom types from the CIF dictionary.
+        debug : boolean, default: False
+            Flag for debug text output.
+
+    Returns
+    -------
+        float
+            Value of the oxidation state (ionicity) of an atom type
+
     """
     ion = 0.0
     if ('data' in d_types) and ('column' in d_types):
@@ -691,6 +721,26 @@ def get_CIF_atom_site_oxidation(atom_site_type_symbol, d_types, debug=False):
     return ion
 
 def get_CIF_atom_sites(d_cif, debug=False):
+    """
+    
+    Returns a list of atom objects representing atom sites defined
+    in the respective list of the input CIF dictionary.
+
+    Parameters
+    ----------
+        d_cif : dict
+            CIF dictionary of a structure definition.
+        debug : boolean, default: False
+            Flag for debug text output.
+
+    Returns
+    -------
+        list (atom)
+            List of atom objects.
+
+    (under development)
+
+    """
     l_as = []
     if 'tables' in d_cif:
         d_as = {}
