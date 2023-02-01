@@ -877,6 +877,32 @@ class supercell:
                     if debug: print('added list', l_close_cur)
         return l_close
 
+    def check_duplicate_atom(self, ato, proximity=1.E-3, periodic=True):
+        n = len(self.l_atoms)
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        sdthr = proximity * proximity
+        if n > 0:
+            for idx in range(0, n):
+                ichk = 0 # reset checker
+                # distance check
+                vlp = self.l_atoms[idx].pos
+                if periodic: # fractional distance vector across periodic boundary conditions
+                    vdlp = ((vlp - ato.pos + 0.5) % 1.0 ) - 0.5
+                else: # fractional distance vector, no periodic boundary
+                    vdlp = vlp - ato.pos
+                vdp = np.dot(mb0, vdlp) # distance vector in physical coordinates [A]
+                sd = np.dot(vdp, vdp)
+                if sd <= sdthr: # squared distance check [A**2]
+                    ichk += 1
+                # type check
+                if ato.Z == self.l_atoms[idx].Z:
+                    ichk += 2
+                # are there other checks to do?
+                # final result
+                if ichk == 3: # duplicate found
+                    return True
+        return False
+
     def list_close_atoms_ref(self, pos, l_atoms_idx, proximity, periodic=True, debug=False):
         """
 

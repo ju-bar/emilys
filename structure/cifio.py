@@ -119,6 +119,7 @@ import json
 import importlib.resources
 from copy import deepcopy
 import numpy as np
+import fractions
 import emilys.structure
 from emilys.structure.supercell import supercell
 import emilys.structure.atom as ato
@@ -332,6 +333,64 @@ def read_CIF_table_row(s, n):
         l_dat.append('')
     return l_dat
 
+def get_CIF_table_column_index(d_table, s):
+    """
+
+    Returns the index of a specific column tag in a CIF table.
+    Returns -1 if the column tab wasn't in the table or if the
+    table has no columns.
+
+    Parameters
+    ----------
+        d_table : dict
+            CIF dictionary table
+        s : str
+            Tag name of a column to find
+
+    Returns
+    -------
+        int
+            Index of column s in d_table
+
+    """
+    idx = -1
+    if 'column' in d_table:
+        if s in d_table['column']:
+            idx = d_table['column'].index(s)
+    return idx
+
+def get_CIF_table_value(d_table, str_col, idx_row, val_default):
+    """
+
+    Returns the value in a CIF table for a specific specific column tag
+    and in a given row. If the column or row cannot be found in the table,
+    the value given by val_default is returned instead.
+
+    Parameters
+    ----------
+        d_table : dict
+            CIF dictionary table
+        str_col : str
+            Tag name of a column
+        idx_row : int
+            Index of a table row
+        val_default : any
+            Value returned by default
+
+    Returns
+    -------
+
+        any
+
+    """
+    val = val_default
+    if 'data' in d_table:
+        num_row = len(d_table['data'])
+        idx_col = get_CIF_table_column_index(d_table, str_col)
+        if (idx_col >= 0) and (num_row > 0) and (idx_row >= 0) and (idx_row < num_row):
+            val = d_table['data'][idx_row][idx_col]
+    return val
+
 def parse_CIF_symop_cmp(s):
     """
 
@@ -440,7 +499,132 @@ def get_CIF_symop(s):
         v[3,2] = v3[3]
     return v
 
-def make_CIF_symop_table(sgn, subgn=1):
+def get_symop_str(transform, shift):
+    """
+
+    Returns a string that describes the shift and transformation
+    of positions in a unit cell based on a shift vector and a
+    transformation matrix.
+
+    Parameters
+    ----------
+        matrix : numpy.ndarray(shape=(3,3))
+            Transformation matrix
+         shift : numpy.ndarray(shape=(3,))
+            Shift vector
+
+    Returns
+    -------
+        str
+
+    """
+    sop = ''
+    for irow in range(0, 3):
+        # matrix columns first
+        s_j = ''
+        for icol in range(0, 3):
+            s_i = ''
+            l_mi = fractions.Fraction(transform[irow][icol]).limit_denominator(1000)
+            if l_mi.numerator == 0: # zero matrix element, nothing to add
+                continue
+            else: # add a string
+                s_i = str_CIF_symop_ch[icol] # x y or z
+                if abs(l_mi.numerator) > 1: # factor
+                    s_i = str(abs(l_mi.numerator)) + '*' + s_i
+                if abs(l_mi.denominator) > 1: # division
+                    s_i = s_i + '/' + str(abs(l_mi.denominator))
+                if l_mi.numerator < 0:
+                    s_i = '-' + s_i
+                if (len(s_j) > 0) and (l_mi.numerator > 0):
+                    s_i = '+' + s_i
+                s_j += s_i
+        # shifts
+        l_sh = fractions.Fraction(shift[irow]).limit_denominator(1000)
+        s_s = ''
+        if abs(l_sh.numerator) > 0: # factor
+            s_s = str(abs(l_sh.numerator))
+            if abs(l_sh.denominator) > 1: # division
+                s_s = s_s + '/' + str(abs(l_sh.denominator))
+            if l_sh.numerator < 0:
+                s_s = '-' + s_s
+            if (len(s_j) > 0) and (l_sh.numerator > 0):
+                s_s = '+' + s_s
+        sop = sop + (s_j + s_s)
+        if irow < 2:
+            sop = sop + ','
+    return sop
+    
+
+def get_CIF_symops_alg(d_cif, debug=False):
+    """
+
+    Returns a list of symmetry operations from a CIF dict
+    in form of matrix and vector values.
+
+    Parameters
+    ----------
+
+        d_cif : dict
+            CIF dictionary
+        debug : boolean
+            Switch debug output
+
+    Return
+    ------
+        list of numpy.ndarray, dtype=float, shape=(4,3)
+            List of symmetry operations defined by a 3x3
+            matrix (first 3 rows) and a 3 vector (last row)
+
+    """
+    l_symop = []
+    d_sym = {}
+    # option 1: use the table of operations in the CIF
+    #           stored in table symmetry_equiv_pos
+    if 'tables' in d_cif:
+        for str_tab in d_cif['tables']:
+            if d_cif['tables'][str_tab]['name'] == 'symmetry_equiv_pos':
+                d_sym = d_cif['tables'][str_tab]
+    # option 2: use the space group number of the international tables
+    #           this and option 3 require loading of the space group
+    #           table resource. Both options do not handle sub-groups.
+    if (('data' not in d_sym) or ('column' not in d_sym)) and ('_symmetry_Int_Tables_number' in d_cif):
+        sgn = int(d_cif['_symmetry_Int_Tables_number'])
+        if debug: print('dbg (get_CIF_symops_alg): generating table for space group #', sgn, ', using default sub-group # 1')
+        d_sym = make_CIF_symop_table(sgn)
+    if (('data' not in d_sym) or ('column' not in d_sym)) and ('_space_group_IT_number' in d_cif):
+        sgn = int(d_cif['_space_group_IT_number'])
+        if debug: print('dbg (get_CIF_symops_alg): generating table for space group #', sgn, ', using default sub-group # 1')
+        d_sym = make_CIF_symop_table(sgn)
+    # option 3: use the space group name
+    if (('data' not in d_sym) or ('column' not in d_sym)) and ('_symmetry_space_group_name_H-M' in d_cif):
+        sgn = d_cif['_symmetry_space_group_name_H-M']
+        if debug: print('dbg (get_CIF_symops_alg): generating table for space group ', sgn, ', using default sub-group # 1')
+        d_sym = make_CIF_symop_table(sgn)
+    if (('data' not in d_sym) or ('column' not in d_sym)) and ('_symmetry_space_group_name_H-M_alt' in d_cif):
+        sgn = d_cif['_symmetry_space_group_name_H-M_alt']
+        if debug: print('dbg (get_CIF_symops_alg): generating table for space group ', sgn, ', using default sub-group # 1')
+        d_sym = make_CIF_symop_table(sgn)
+    if (('data' not in d_sym) or ('column' not in d_sym)) and ('_space_group_name_H-M_alt' in d_cif):
+        sgn = d_cif['_space_group_name_H-M_alt']
+        if debug: print('dbg (get_CIF_symops_alg): generating table for space group ', sgn, ', using default sub-group # 1')
+        d_sym = make_CIF_symop_table(sgn)
+    # option 4: assume spascegroup 'P 1'
+    if (('data' not in d_sym) or ('column' not in d_sym)):
+        if debug: print('dbg (get_CIF_symops_alg): generating table for space group P 1 (default due to missing information)')
+        d_sym = make_CIF_symop_table(1)
+    # make the list of operations now
+    if ('data' in d_sym) and ('column' in d_sym):
+        if debug: print('dbg (get_CIF_symops_alg): found table symmetry_equiv_pos in CIF dict')
+        num_op = len(d_sym['data'])
+        if num_op > 0: # use the list given
+            for irow in range(0, num_op):
+                str_op = get_CIF_table_value(d_sym, '_space_group_symop_operation_xyz', irow, 'x,y,z')
+                a_op = get_CIF_symop(str_op)
+                l_symop.append(deepcopy(a_op))
+            return l_symop # done
+    return l_symop
+
+def make_CIF_symop_table(sgn, subgn=1, debug=False):
     """
 
     Returns a dictionary defining a space group table for CIF
@@ -452,9 +636,13 @@ def make_CIF_symop_table(sgn, subgn=1):
         sgn : int or str
             Space group number in the international tables
             as in CIF '_symmetry_Int_Tables_number'
-
-        subgn : int or str, default: 1
-            Sub-group number
+            or the name of a sub group (parameter subgn is ignored
+            in case of str input and the sub-group name is 
+            used to identify the symmetry table)
+        subgn : int, default: 1
+            Sub-group number, only applies if sgn is of type int
+        debug : boolean
+            Switch debug output
 
     Returns
     -------
@@ -465,8 +653,21 @@ def make_CIF_symop_table(sgn, subgn=1):
     d = {}
     with importlib.resources.open_binary(emilys.structure, 'sgops.json') as f_sg:
         d_sg = json.load(f_sg)
-    str_sgn = str(sgn)
-    str_sub = str(subgn)
+    if type(sgn) == int:
+        str_sgn = str(sgn)
+        str_sub = str(subgn)
+    elif type(sgn) == str:
+        bfoun = False
+        for sg in d_sg:
+            for sgsub in d_sg[sg]:
+                str_sub_name = str(d_sg[sg][sgsub]['name']).replace(" ","")
+                if str_sub_name == sgn:
+                    str_sgn = sg
+                    str_sub = sgsub
+                    bfound = True
+                    break
+            if bfound: break
+    # assume str_sgn and str_sub are tags of the loaded table
     if str_sgn in d_sg:
         du = d_sg[str_sgn]
         if str_sub in du["sub"]:
@@ -474,9 +675,21 @@ def make_CIF_symop_table(sgn, subgn=1):
             d['name'] = 'symmetry_equiv_pos'
             d['column'] = ['_space_group_symop_id', '_space_group_symop_operation_xyz']
             d['data'] = []
+            dus_org = dus['origin']
             dus_ops = dus["operation"]
-            for sop in dus_ops:
-                d['data'].append([sop, dus_ops[sop]])
+            iop = 0
+            for sorg in dus_org:
+                a_org = np.array(get_CIF_symop(dus_org[sorg])) # get shift op as numpy
+                v_shift = a_org[3] # shift vector
+                if debug: print('dbg (make_CIF_symop_table): ', sorg, ':', dus_org[sorg], ' -> ', v_shift)
+                for sop in dus_ops:
+                    a_op = np.array(get_CIF_symop(dus_ops[sop])) # get transformation op as numpy array
+                    if debug: print('dbg (make_CIF_symop_table): ', sop, ':', dus_ops[sop], ' -> ', a_op)
+                    a_op[3,:] = np.mod(a_op[3,:] + v_shift[:], 1.0) # offset shift and mod 1
+                    sop_offset = get_symop_str(a_op[0:3], a_op[3]) # get the updated operation str with offset
+                    iop += 1
+                    if debug: print('dbg (make_CIF_symop_table): => ', iop, ': ', sop_offset)
+                    d['data'].append([str(iop), sop_offset])
         else:
             print('Error (make_CIF_symop_table): Unknown sub-group (', subgn, ') in space group number: ', sgn)    
         
@@ -859,22 +1072,36 @@ def get_CIF_atom_sites(d_cif, debug=False):
     return l_as
 
 def get_CIF_atom_sites_P1(d_cif):
-    l_as_P1 = []
-    l_as = get_CIF_atom_sites(d_cif) # get list of atom sites using atom objects
+    # create a local supercell object for handling new sites
+    sc = supercell()
+    sc.a0[0] = get_CIF_float(d_cif['_cell_length_a'])
+    sc.a0[1] = get_CIF_float(d_cif['_cell_length_b'])
+    sc.a0[2] = get_CIF_float(d_cif['_cell_length_c'])
+    sc.angles[0] = get_CIF_float(d_cif['_cell_angle_alpha'])
+    sc.angles[1] = get_CIF_float(d_cif['_cell_angle_beta'])
+    sc.angles[2] = get_CIF_float(d_cif['_cell_angle_gamma'])
+    sc.basis = sc.get_basis()
+    sc.l_atoms = [] # empty list of atoms
+    l_ats = get_CIF_atom_sites(d_cif) # get list of atom sites using atom objects
+    l_symop = get_CIF_symops_alg(d_cif) # get a list of symmetry operations
     # apply symmetry operations and transform to spacegroup P1
-    # TODO: implement the use of symmetry operations (SG (in) -> P1 (out))
-    # (assume P1)
-    l_as_P1 = l_as
-    return l_as_P1
+    for ats in l_ats: # loop over input sites
+        for symop in l_symop: # loop over symmetry operations
+            new_ats = deepcopy(ats) # copy input atom site definition
+            pos = np.mod(ats.pos, 1.0)
+            new_ats.pos = np.mod(np.dot(symop[0:3],pos) + symop[3], 1.0)
+            if not sc.check_duplicate_atom(new_ats): # not a duplicate
+                sc.l_atoms.append(new_ats)
+    return sc.l_atoms
 
 def CIF_to_supercell(d_cif):
     sc = supercell()
-    sc.a0[0] = float(d_cif['_cell_length_a'])
-    sc.a0[1] = float(d_cif['_cell_length_b'])
-    sc.a0[2] = float(d_cif['_cell_length_c'])
-    sc.angles[0] = float(d_cif['_cell_angle_alpha'])
-    sc.angles[1] = float(d_cif['_cell_angle_beta'])
-    sc.angles[2] = float(d_cif['_cell_angle_gamma'])
+    sc.a0[0] = get_CIF_float(d_cif['_cell_length_a'])
+    sc.a0[1] = get_CIF_float(d_cif['_cell_length_b'])
+    sc.a0[2] = get_CIF_float(d_cif['_cell_length_c'])
+    sc.angles[0] = get_CIF_float(d_cif['_cell_angle_alpha'])
+    sc.angles[1] = get_CIF_float(d_cif['_cell_angle_beta'])
+    sc.angles[2] = get_CIF_float(d_cif['_cell_angle_gamma'])
     sc.basis = sc.get_basis()
     sc.l_atoms = get_CIF_atom_sites_P1(d_cif) # get the atom site list in space group P1
     return sc
@@ -933,5 +1160,7 @@ def supercell_to_CIF(sc):
                 if i == isymb:
                     break
         str_label = str_sy + str(nlabel)
-        d['tables']['2']['data'].append([str_label, str_symb, ato.occ, ato.pos[0], ato.pos[1], ato.pos[2], 'Uiso', ato.uiso])
+        d['tables']['2']['data'].append([str_label, str_symb, np.round(ato.occ,6), 
+            np.round(ato.pos[0],6), np.round(ato.pos[1],6), np.round(ato.pos[2],6),
+            'Uiso', np.round(ato.uiso,6)])
     return d
