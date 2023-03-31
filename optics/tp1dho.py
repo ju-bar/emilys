@@ -39,7 +39,7 @@ def usqr0(m, w):
     return ec.PHYS_HBAR / (2. * m * w)
 
 def En(n, w):
-    return (2*n + 1) * ec.PHYS_HBAR * w
+    return (n + 0.5) * ec.PHYS_HBAR * w
 
 def usqrn(n, m, w):
     return (2*n + 1) * usqr0(m, w)
