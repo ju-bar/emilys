@@ -11,7 +11,7 @@ published under the GNU General Publishing License, version 3
 
 """
 import emilys.optics.econst as ec
-from scipy.special import hermite
+from scipy.special import hermite, genlaguerre
 import numpy as np
 
 def usqr0(m, w):
@@ -87,3 +87,46 @@ def psi(x, n, us):
     nf = float(np.math.factorial(n))
     ydf1 = np.sqrt(p2 * nf)
     return yhn * yef / (ydf1 * ydf2)
+
+def tsq(q, us, m, n):
+    """
+
+    1D-QHO transition strength as a function of q.
+
+    Sqrt[m! / n!] * (i b)**(n-m) * L_m^(n-m)[b**2] exp[-0.5*b**2]
+
+    b = -2 pi q Sqrt[us]
+
+    Parameters
+    ----------
+        q : numpy.ndarray(dtype=float)
+            reciprocal space coordinate
+        us : float
+            mean squared displacement of the oscillator ground state
+        m : int
+            initial state quantum number
+        n : int
+            final state quantum number
+
+    Returns
+    -------
+        numpy.ndarray(dtype=complex)
+            transition strength for each of the input q
+
+
+    """
+    assert us > 0., "expecting us > 0"
+    assert m >= 0, "expecting m >= 0"
+    assert n >= 0, "expecting n >= 0"
+    nhi = max(m, n)
+    nlo = min(m, n)
+    dn = nhi - nlo # transition level
+    #gl = genlaguerre(m, dn, monic=True) # generalized laguerre polynomial
+    gl = genlaguerre(nlo, dn) # generalized laguerre polynomial
+    b = -2.0 * np.pi * q * np.sqrt(us) # b parameter
+    b2 = b * b # b^2
+    nlof = float(np.math.factorial(nlo)) # m!
+    nhif = float(np.math.factorial(nhi)) # n!
+    cf = np.power(b * 1.0J, dn)
+    s = cf * gl(b2) * np.exp(-0.5*b2) * np.sqrt(nlof/nhif)
+    return s
