@@ -13,7 +13,7 @@ published under the GNU General Publishing License, version 3
 """
 
 import numpy as np
-from numba import jit, int64, float64, complex128
+from numba import jit, prange, int64, float64, complex128
 from scipy import interpolate
 import emilys.optics.econst as ec
 import emilys.optics.tp1dho as ho
@@ -280,7 +280,7 @@ def numint_muh(n, l_qi, iqex, iqey, nd, dethash, tmx, tmy, feq, muh):
             muh[i2, i1] = s # store result in output
     return 0
 
-@jit(int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True)
+@jit(int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True, parallel=True)
 def numint_muh2(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
     '''
     numint_muh2
@@ -319,6 +319,7 @@ def numint_muh2(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
     n = len(l_qi)
     n2 = n >> 1 # q-grid nyquist
     nd = len(dethash)
+    imuh = np.zeros((n,n), dtype=np.float64)
     for idet in range(0, nd): # run over detector pixels -> (qy, qx)
         jdet = dethash[idet] # (qy, qx) indices in the original grid
         jq2 = jdet[0] + iqey # index of qy in the extended array
@@ -329,14 +330,17 @@ def numint_muh2(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
         jqh20 = jq2 - n2 # offset of the qy + hy grid in the extended grid
         jqh10 = jq1 - n2 # offset of the qx + hx grid in the extended grid
         #
+        imuh[:,:] = 0.0 # reset loop result
         # run through the h vectors and sum to output
-        for i2 in range(0, n): # hy
+        for i2 in prange(0, n): # hy (parallel)
             j2 = i2 + jqh20
             for i1 in range(0, n): # hx
                 j1 = i1 + jqh10
                 pqh = tmy[j2] * tmx[j1] # matrix elements for q + h
                 p = np.double((pq * np.conjugate(pqh)).real) # product of 2d matrix elements -> is always real valued
-                muh[i2,i1] += p * feq[j2,j1] * feqq
+                imuh[i2,i1] = p * feq[j2,j1] * feqq
+        #
+        muh[0:n,0:n] += imuh[0:n,0:n] # avoid racing condition by accumulating out of the parallel loop
         #
     return 0
 
@@ -736,7 +740,11 @@ class phonon_isc:
         n = self.qgrid["n"]
         dq = self.qgrid["dq"]
         l_qi = self.qgrid["l_qi"]
-        pfac = dq * dq * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        pfac = dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        # ^^    need to clarify the units here
+        #      1/A * 1/A * J^4 * s^4 / kg^2
+        #      A^{-2} * J^2 * kg^2 * m^4 * s^{-4} * s^4 * kg^{-2}
+        #      10^4 J^2 A^2
         gex = self.qgrid["extended"]
         l_qex = gex["l_qix"] * dq
         l_qey = gex["l_qiy"] * dq
@@ -750,7 +758,7 @@ class phonon_isc:
         hy = ho.tsq(l_qey, u02, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
         sdet = np.zeros((n,n), dtype=np.double) # detector sum on the original q grid
         dethash = self.det["hash"]["index"]
-        ndet = len(dethash)
+        #ndet = len(dethash)
         #j = numint_muh(n, l_qi, l_gsh[1], l_gsh[0], ndet, dethash, hx, hy, feq, sdet)
         j = numint_muh2(l_qi, l_gsh[1], l_gsh[0], dethash, hx, hy, feq, sdet)
         # for i2 in range(0, n):
@@ -819,7 +827,7 @@ class phonon_isc:
         imin = int(energy_loss_range[0] / dE)
         imax = int(energy_loss_range[1] / dE)
         l_dE = np.arange(imin, imax+1, 1) * dE # energy loss grid
-        a_mu = np.zeros((len(l_dE), self.qgrid["n"], self.qgrid["n"]), dtype=float) # output array
+        a_mu = np.zeros((len(l_dE), self.qgrid["n"], self.qgrid["n"]), dtype=np.double) # output array
         # calculation
         # 1) Setup for given q-grid and detector
         #    This sets arrays used by other functions.
@@ -840,17 +848,20 @@ class phonon_isc:
         self.prepare_feq_ext() # prepares fe(q) on the extended q-grid
         #
         # 2) Oscillators and states
+        ntr_total = 0 # count number of all transitions
         for iep in range(0, len(self.pdos["data"]["energy"])): # loop over phonon energies
             pdos = self.pdos["data"]["pdos"][iep] # pdos value in the current phonon energy bin
             if pdos < pdos_thr: # check pdos against probability threshold
                 continue # skip phonon energy
-            if verbose > 0: print('(get_mul2d): calculating contributions for phonon energy {:.4f} eV ...'.format(ep))
             ep = self.pdos["data"]["energy"][iep] # current phonon energy
+            if verbose > 0: print('(get_mul2d): calculating contributions for phonon energy {:.4f} eV (pdos = {:.2f}%) ...'.format(ep, pdos*100.))
             w = ep / ec.PHYS_HBAREV # oscillator frequency
             nimax = nmaxt(ep, self.t, self.pthr) # get max. initial state quantum number to take into account
+            if verbose > 0: print('(get_mul2d): including initial states up to m = {:d} ...'.format(nimax))
             nrmtbd = (np.exp(ep/self.tev) - 1)**2 / np.exp(ep/self.tev) # normalization factor for the 2-d boltzmann distribution
             # boltzmann distribution threshold
             pb_thr = nrmtbd * pbolz(ep, self.t) * self.pthr # 2d ground state occupation time relative threshold
+            if verbose > 0: print('(get_mul2d): allowing 2d Boltzmann factors above {:.2f}% ...'.format(pb_thr*100.))
             # per phonon energy (to be weighted by pdos)
             for niy in range(0, nimax+1): # loop over initial states in the y dimension
                 eiy = ho.En(niy, w) / ec.PHYS_QEL # initial y state energy in eV
@@ -859,8 +870,8 @@ class phonon_isc:
                     eix = ho.En(nix, w) / ec.PHYS_QEL # initial x state energy in eV
                     pbx = pbolz(eix, self.t) # initial x state Boltzmann distribution probability
                     pb2 = nrmtbd * pbx * pby # normalized occupation of the initial state
-                    if pb2 < pbthr: continue # 
-                    if verbose > 1: print('(get_mul2d): * initial state [{:d},{:d}] ...'.format(nix,niy))
+                    if pb2 < pb_thr: continue # 
+                    if verbose > 1: print('(get_mul2d): * initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(nix,niy,pb2*100.))
                     #
                     # Initialize an expanding loop over final states.
                     # This loop will at least include single phonon excitations.
@@ -882,6 +893,7 @@ class phonon_isc:
                     #
                     while (bmorefx or bmorefy): # either add more columns or rows of higher multi-phonon levels by final states
                         #
+                        ntr0 = ntr # transitions before this round
                         if bmorefy: # add next rows (excluding corners)
                             trsmaxy = 0.
                             for nfy in [niy-nyd,niy+nyd]: # nfy row indices
@@ -931,7 +943,7 @@ class phonon_isc:
                                     bmorefx = False
                         #
                         # handle corners
-                        if not single_only: # corners are always multi-phonon excitations
+                        if not single_phonon: # corners are always multi-phonon excitations
                             # add corners (always needed as long as x or y progresses)
                             for nfy in [niy-nyd,niy+nyd]: # nfy corner row indices
                                 if nfy < 0: continue # skip negative qn
@@ -952,16 +964,29 @@ class phonon_isc:
                         # update controls
                         if bmorefy:
                             nyd += 1 # add rows
+                            if verbose > 2: print('(get_mul2d):   * y transition level raised to {:d}'.format(nyd))
                             trsmax = max(trsmax, trsmaxy) # maximum update
                         if bmorefx:
                             nxd += 1 # add columnss
+                            if verbose > 2: print('(get_mul2d):   * x transition level raised to {:d}'.format(nxd))
                             trsmax = max(trsmax, trsmaxx) # maximum update
                         #
-                        if single_only: # single-phonon transition case, just stop here
+                        if ntr == ntr0: # stop, because no transition was added, we do not expect more to come
                             bmorefy = False
                             bmorefx = False
                         #
+                        if single_phonon: # single-phonon transition case, just stop here
+                            bmorefy = False
+                            bmorefx = False
+                        #
+                    #
+                    ntr_total += ntr # sum total transitions
                     if verbose > 1: print('(get_mul2d): * transitions added: {:d}'.format(ntr))
+                    #
+                #
+            #
+        #
+        if verbose > 0: print('(get_mul2d): total number of transitions considered: {:d}'.format(ntr_total))
         # returning
         return {
             "data" : a_mu,
