@@ -220,73 +220,24 @@ def resample_pdos(l_ev, l_pdos, dE, pdos_ip_kind='linear'):
     p2n = p2 * s1 / s2 # keep input norm
     return s1, e2, p2n
 
-# would be nice to have compiled, this costs a lot and is repeated a lot
-@jit(int64(int64, int64[:], int64, int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True)
-def numint_muh(n, l_qi, iqex, iqey, nd, dethash, tmx, tmy, feq, muh):
+
+@jit(int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True, parallel=True)
+def numint_muh(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
     '''
     numint_muh
 
-    Calculates mu_h for a given pair of matrix elements hx, hy, detector
+    Calculates mu_h for a given pair of matrix elements tmx, tmy, detector
     function dethash and electron scattering factors feq into seq.
 
-    Compiled code using jit.
-    int64(int64, int64[:], int64, int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:])
+    mu_{n,m}(h) = sum_q fe(h-q) fe(q) <a_n(t)|exp(-2pi I (h-q).t)|a_m(t)> <a_m(t)|exp(-2pi I q.t)|a_n(t)>
 
-    Parameters
-    ----------
-        n : int64
-            number of pixels of the original grid
-        l_qi : int64[:], shape=(n)
-            frequency indices on the original grid
-        iqex : int64
-            offset of the original grid in the extended grid x dimension
-        iqey : int64
-            offset of the original grid in the the extended grid y dimension
-        nd : int64
-            number of detector pixels
-        dethash : int64[:,:], shape=(nd, 2)
-            pixel indices on the original q-grid falling into the detector
-        tmx : complex128[:], shape(nextended_x)
-            transition matrix element of the x mode, calculated on the extended grid
-        tmy : complex128[:], shape(nextended_y)
-            transition matrix element of the y mode, calculated on the extended grid
-        feq: float64[:,:], shape(nextended_y,nextended_x)
-            electron scattering factor on the extended grid
-        muh: float64[:,:]
-            resulting mu_{h,0} for h frequencies of the original grid
+    This is vor vectors h, q, t, m, and n and the sum over q is performed for grid
+    points in the detector collection aperture (given by dethash). Vector m is the
+    initial state and n is the final state set of oscillator quantum numbers.
 
-    Returns
-    -------
-        int64
-            always = 0
-
-    '''
-    for i2 in range(0, n): # run over indices of the original grid -> hy
-        #j2 = l_qi[i2] # frequency index of the output grid (hy)
-        for i1 in range(0, n): # run over indices of the original grid -> hx
-            #j1 = l_qi[i1] # frequency index of the output grid (hx)
-            s = 0.0 # reset accumulator
-            for idet in range(0, nd): # run over detector pixels -> (qy, qx)
-                jdet = dethash[idet] # (qy, qx) indices in the original grid
-                jq2 = jdet[0] + iqey # index of qy in the extended array
-                jq1 = jdet[1] + iqex # index of qx in the extended array
-                jqh2 = l_qi[jdet[0]] + i2 + iqey # index of (qy + hy) in the extended array
-                jqh1 = l_qi[jdet[1]] + i1 + iqex # index of (qx + hx) in the extended array
-                pqh = tmx[jqh1] * tmy[jqh2] # tmx(qx + hx) * tmy(qy + hy)
-                pq = tmx[jq1] * tmy[jq2] # tmx(qx) * tmy(qy)
-                p = np.double((pq * np.conjugate(pqh)).real) # product of 2d matrix elements -> is always real valued
-                trs = p * feq[jqh2,jqh1] * feq[jq2, jq1] # multiplication with electron scattering factors
-                s += trs # summation over all pixels (qy, qx) in the detector
-            muh[i2, i1] = s # store result in output
-    return 0
-
-@jit(int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True, parallel=True)
-def numint_muh2(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
-    '''
-    numint_muh2
-
-    Calculates mu_h for a given pair of matrix elements hx, hy, detector
-    function dethash and electron scattering factors feq into seq.
+    Note also that
+    <a_n(t)|exp(-2pi I q.t)|a_m(t)> = <a_m(t)|exp(-2pi I q.t)|a_n(t)> for harmonic
+    oscillator wave functions a_n(t) and a_m(t), because these functions are real valued.
 
     Compiled code using jit.
     int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:])
@@ -327,18 +278,33 @@ def numint_muh2(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
         pq = tmx[jq1] * tmy[jq2] # tmx(qx) * tmy(qy)
         feqq = feq[jq2, jq1] # fe(q)
         #
-        jqh20 = jq2 - n2 # offset of the qy + hy grid in the extended grid
-        jqh10 = jq1 - n2 # offset of the qx + hx grid in the extended grid
+        # off-setting the h grid by -q of the detector pixel is not trivial
+        # * given a detector pixel jdet, these indices are frequency + (n>>1)
+        # * given an h-grid pixel i, these indices are also the frequency + (n>>1)
+        # * now calculate the target frequency h - q, this is simply i - jdet,
+        #   however, this is now a frequency and not an index, so we need to add
+        #   (n>>1) to get to the target index in the h-grid
+        #   j = i - jdet + (n>>1)
+        # * apply the offset iqe to get to the index in the extended grid
+        #   jj = j + iqe = i - jdet + (n>>1) + iqe
+        # * this means, the offset of h - q in the extended grid is
+        #   iqe + (n>>1) - jdet
+        # 
+        #jqh20 = jq2 - n2 # offset of the hy - qy grid in the extended grid
+        #jqh10 = jq1 - n2 # offset of the hx - qx grid in the extended grid
+        jqh20 = iqey + n2 - jdet[0] # offset of the hy - qy grid in the extended grid
+        jqh10 = iqex + n2 - jdet[1] # offset of the hy - qy grid in the extended grid
         #
         imuh[:,:] = 0.0 # reset loop result
         # run through the h vectors and sum to output
-        for i2 in prange(0, n): # hy (parallel)
-            j2 = i2 + jqh20
+        # Disabling pylint warning, see https://github.com/PyCQA/pylint/issues/2910
+        for i2 in prange(0, n): # pylint: disable=not-an-iterable # hy (parallel)
+            j2 = i2 + jqh20 # hy --> hy - qy
             for i1 in range(0, n): # hx
-                j1 = i1 + jqh10
-                pqh = tmy[j2] * tmx[j1] # matrix elements for q + h
-                p = np.double((pq * np.conjugate(pqh)).real) # product of 2d matrix elements -> is always real valued
-                imuh[i2,i1] = p * feq[j2,j1] * feqq
+                j1 = i1 + jqh10 # hx --> hx - qx
+                pqh = tmy[j2] * tmx[j1] # matrix elements for h - q
+                p = np.double((pq * pqh).real) # product of 2d matrix elements -> is always real valued but positive or negative
+                imuh[i2,i1] = p * feq[j2,j1] * feqq # store on h-grid per detector pixel
         #
         muh[0:n,0:n] += imuh[0:n,0:n] # avoid racing condition by accumulating out of the parallel loop
         #
@@ -684,13 +650,16 @@ class phonon_isc:
 
         '''
         l_qi = self.qgrid["l_qi"] # list of q frequency indices
-        l_q_rng = [np.amin(l_qi), np.amax(l_qi)]
+        l_q_rng = [np.amin(l_qi), np.amax(l_qi)] # original grid range of frequencies
         l_det_idr = self.det["hash"]["ifreq_range"] # frequency range of the detector on the q-grid
         l_ext_rng = np.array([l_q_rng, l_q_rng]) # preset extended range by primary range
-        l_ext_rng[0,0] = min(l_ext_rng[0,0], l_ext_rng[0,0] + l_det_idr[0,0]) # update minimum ifreq of y
-        l_ext_rng[0,1] = max(l_ext_rng[0,1], l_ext_rng[0,1] + l_det_idr[0,1]) # update maximum ifreq of y
-        l_ext_rng[1,0] = min(l_ext_rng[1,0], l_ext_rng[1,0] + l_det_idr[1,0]) # update minimum ifreq of x
-        l_ext_rng[1,1] = max(l_ext_rng[1,1], l_ext_rng[1,1] + l_det_idr[1,1]) # update maximum ifreq of x
+        # take into account that we extend for frequencies h - q !!!
+        # -> extended minimum = minimum of original minimum minus detector maximum
+        # -> extended maximum = maximum of original maximum minus detector minimum
+        l_ext_rng[0,0] = min(l_ext_rng[0,0], l_ext_rng[0,0] - l_det_idr[0,1]) # update minimum ifreq of y
+        l_ext_rng[0,1] = max(l_ext_rng[0,1], l_ext_rng[0,1] - l_det_idr[0,0]) # update maximum ifreq of y
+        l_ext_rng[1,0] = min(l_ext_rng[1,0], l_ext_rng[1,0] - l_det_idr[1,1]) # update minimum ifreq of x
+        l_ext_rng[1,1] = max(l_ext_rng[1,1], l_ext_rng[1,1] - l_det_idr[1,0]) # update maximum ifreq of x
         l_qiy = np.arange(l_ext_rng[0,0], l_ext_rng[0,1] + 1, 1, dtype=np.int64)
         l_qix = np.arange(l_ext_rng[1,0], l_ext_rng[1,1] + 1, 1, dtype=np.int64)
         # store extended grid data
@@ -740,11 +709,8 @@ class phonon_isc:
         n = self.qgrid["n"]
         dq = self.qgrid["dq"]
         l_qi = self.qgrid["l_qi"]
-        pfac = dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        pfac = 1.0 # * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
         # ^^    need to clarify the units here
-        #      1/A * 1/A * J^4 * s^4 / kg^2
-        #      A^{-2} * J^2 * kg^2 * m^4 * s^{-4} * s^4 * kg^{-2}
-        #      10^4 J^2 A^2
         gex = self.qgrid["extended"]
         l_qex = gex["l_qix"] * dq
         l_qey = gex["l_qiy"] * dq
@@ -758,27 +724,7 @@ class phonon_isc:
         hy = ho.tsq(l_qey, u02, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
         sdet = np.zeros((n,n), dtype=np.double) # detector sum on the original q grid
         dethash = self.det["hash"]["index"]
-        #ndet = len(dethash)
-        #j = numint_muh(n, l_qi, l_gsh[1], l_gsh[0], ndet, dethash, hx, hy, feq, sdet)
-        j = numint_muh2(l_qi, l_gsh[1], l_gsh[0], dethash, hx, hy, feq, sdet)
-        # for i2 in range(0, n):
-        #     j2 = l_qi[i2] # frequency index of the output grid (hy)
-        #     for i1 in range(0, n):
-        #         j1 = l_qi[i1] # frequency index of the output grid (hx)
-        #         s = 0.0 # reset accumulator
-        #         for idet in range(0, len(dethash)):
-        #             jdet = dethash[idet]
-        #             jd2 = l_qi[jdet[0]] # frequency index of the detector grid (qy)
-        #             jd1 = l_qi[jdet[1]] # frequency index of the detector grid (qx)
-        #             ld2 = jd2 - l_ifr[0,0] # index of qy in the extended array
-        #             ld1 = jd1 - l_ifr[1,0] # index of qx in the extended array
-        #             k2 = j2 + jd2 # frequency index of hy + qy
-        #             k1 = j1 + jd1 # frequency index of hx + qx
-        #             l2 = k2 - l_ifr[0,0] # index of hy + qy in the extended array
-        #             l1 = k1 - l_ifr[1,0] # index of hx + qx in the extended array
-        #             trs = hx[ld1] * hy[ld2] * np.conjugate(hx[l1] * hy[l2]) * feq[l2,l1] * feq[ld2, ld1]
-        #             s += trs
-        #         sdet[i2, i1] = s 
+        j = numint_muh(l_qi, l_gsh[1], l_gsh[0], dethash, hx, hy, feq, sdet)
         return sdet * pfac
 
 
@@ -972,6 +918,7 @@ class phonon_isc:
                             trsmax = max(trsmax, trsmaxx) # maximum update
                         #
                         if ntr == ntr0: # stop, because no transition was added, we do not expect more to come
+                            # this catches infinite loops because there are skipping events in the above
                             bmorefy = False
                             bmorefx = False
                         #
