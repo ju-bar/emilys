@@ -110,7 +110,7 @@ def tsq(q, us, m, n):
 
     Returns
     -------
-        numpy.ndarray(dtype=complex)
+        numpy.ndarray(dtype=complex128)
             transition strength for each of the input q
 
 
@@ -129,4 +129,4 @@ def tsq(q, us, m, n):
     nhif = float(np.math.factorial(nhi)) # n!
     cf = np.power(b * 1.0J, dn)
     s = cf * gl(b2) * np.exp(-0.5*b2) * np.sqrt(nlof/nhif)
-    return s
+    return np.complex128(s)

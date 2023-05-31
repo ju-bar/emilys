@@ -169,7 +169,6 @@ def theta2qperp(theta, e0, de=0.):
             perpendicular component of the scattering angle in 1/nm
     """
     qperp = 0.
-    assert ((0 <= theta) and (theta <=np.pi)), 'this assumes 0 <= theta <= pi'
     if (np.abs(de) >= e0):
         print("Warning (theta2qperp): energy not conserved, de is larger or equal e0.")
         return qperp
