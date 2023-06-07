@@ -360,7 +360,8 @@ class phonon_isc:
         5) pmu.set_atom(14, "Si", 28.0855)
         6) pmu.set_pdos(l_e, l_p, 0.005)
         7) pmu.set_temperature(293.0)
-        8) a = pmu.get_mul2d([0.001, 0.01]) # ... to calculate
+        8) a = pmu.get_mul2d([0.001, 0.01]) # ... to calculate mu(dE,gy,gx)
+           a = get_spec_prb(probe, [0.001, 0.01]) # ... to calculate probe EELS
 
     '''
     def __init__(self, prob_threshold=0.05):
@@ -486,6 +487,7 @@ class phonon_isc:
         
         '''
         nq = self.qgrid["n"]
+        nq2 = nq >> 1 # nyquist number
         l_q = self.qgrid["l_q"]
         l_qi = self.qgrid["l_qi"]
         l_det = np.zeros((nq,nq), dtype=np.double) # detector function
@@ -507,6 +509,7 @@ class phonon_isc:
                     iqr[1][0] = min(iqr[1][0], l_qi[j])
                     iqr[1][1] = max(iqr[1][1], l_qi[j])
         self.det["grid"] = l_det
+        self.det["grid_fft"] = np.roll(l_det, shift=(-nq2, -nq2), axis=(0, 1))
         self.det["hash"] = {
             "index" : np.array(l_dethash, dtype=np.int64),
             "ifreq_range" : np.array(iqr, dtype=np.int64)
@@ -672,6 +675,35 @@ class phonon_isc:
             "offset" : np.array([l_qi[0] - l_qiy[0],l_qi[0] - l_qix[0]],dtype=np.int64) # offset of the original q-grid in the extended grid (y,x)
         }
 
+    def prepare_qgrid_tpc(self):
+        '''
+
+        prepare_qgrid_ext
+
+        Prepares a q-grid for the transition potential calculation.
+
+        Requires prior calls to members
+        set_qgrid
+
+        The size of the grid depends on the original q grid.
+        
+        This is for square grids only.
+
+        This function is called from class functions and
+        should not be used elsewhere. It relies on a full
+        setup of the object (grid and detector)
+
+        '''
+        n = self.qgrid["n"]
+        n2 = n >> 1 # nyquist index
+        l_qi = ((np.arange(0, n) + n2) % n) - n2 # list of q frequency indices
+        # store tpc grid data
+        self.qgrid["tpc"] = {
+            "n" : n, # number of pixels in one dimension (square size)
+            "dq" : self.qgrid["dq"], # q step size
+            "l_qi" : l_qi # y frequency indices
+        }
+
     def prepare_feq_ext(self):
         '''
 
@@ -692,6 +724,28 @@ class phonon_isc:
         l_q2ex = np.sum(np.meshgrid((gex["l_qix"] * dq)**2, (gex["l_qiy"] * dq)**2), axis=0)
         gex["l_qabs"] = np.sqrt(l_q2ex)
         gex["l_feq"] = get_fen(gex["l_qabs"].flatten(), self.atom["data"]["q"], self.atom["data"]["fe"]).reshape(ny,nx).astype(np.double)
+
+    def prepare_feq_tpc(self):
+        '''
+
+        prepare_feq_tpc
+
+        Prepares atom scattering factors on the q-grid
+        for transition potential calculations.
+
+        This function is called from class functions and
+        should not be used elsewhere. It relies on a full
+        setup of the object (grid and detector)
+
+        Current implementation is for square grids.
+
+        '''
+        gtp = self.qgrid["tpc"]
+        n = gtp["n"]
+        dq = self.qgrid["dq"]
+        l_q2ex = np.sum(np.meshgrid((gtp["l_qi"] * dq)**2, (gtp["l_qi"] * dq)**2), axis=0)
+        l_qabs = np.sqrt(l_q2ex)
+        gtp["l_feq"] = get_fen(l_qabs.flatten(), self.atom["data"]["q"], self.atom["data"]["fe"]).reshape(n,n).astype(np.double)
 
     def get_trstr(self, ep, mx, nx, my, ny):
         '''
@@ -726,8 +780,65 @@ class phonon_isc:
         dethash = self.det["hash"]["index"]
         j = numint_muh(l_qi, l_gsh[1], l_gsh[0], dethash, hx, hy, feq, sdet)
         return sdet * pfac
+    
+    def get_tpq(self, ep, mx, nx, my, ny):
+        '''
 
+        get_tpq
 
+        Calculates the transition potential as a function of q
+        for the given phonon energy ep and the transition quantum
+        numbers mx -> nx, my -> ny.
+
+        The returned data is missing a prefactor
+        h^2 / (2 pi m0)
+        where m0 is the electron rest mass.
+
+        Returns an array of values for a square fft based q-grid.
+        The output is an array of type numpy.complex128
+
+        '''
+        gtp = self.qgrid["tpc"]
+        dq = gtp["dq"]
+        l_qi = gtp["l_qi"]
+        l_q = l_qi * dq # actual spatial frequencies in 1/A
+        # get oscillator parameters
+        w = ep / ec.PHYS_HBAREV # frequency in Hz
+        mat = self.atom["mass"] * ec.PHYS_MASSU # atom mass in kg
+        u02 = ho.usqr0(mat, w) * 1.E20 # ground state MSD in A^2
+        # calculate transition potential -> h
+        hx = ho.tsq(l_q, u02, mx, nx) # x mode transition factors <a_nx|H|a_mx>(q)
+        hy = ho.tsq(l_q, u02, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
+        h = np.outer(hy, hx) * gtp["l_feq"] # H(qy,qx) = Hx(qx) * Hy(qy) * fe(qy,qx)
+        return h
+
+    def get_trstr_tp(self, probe, ep, mx, nx, my, ny):
+        '''
+
+        get_trstr_tp
+
+        Calculates the transition strength for a given probe
+        wavefunction and the current detector.
+
+        This function is called from class functions and
+        should not be used elsewhere. It relies on a full
+        setup of the object (grid and detector)
+
+        '''
+        l_det = self.det["grid_fft"]
+        pfac = 1.0 # * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        # ^^    need to clarify the units here
+        # calculate transition potential -> h
+        h = self.get_tpq(ep, mx, nx, my, ny)
+        # calculate inelastic wave function (multiply h in real space)
+        pinel = probe * np.fft.ifft2(h) # ... (missing I sigma ) ...
+        pinelq = np.fft.fft2(pinel) # inelastic wavefunction in q-space
+        # inelastic diffraction pattern
+        difpat = pinelq.real**2 + pinelq.imag**2
+        # ... integration over the detector area
+        #sdet = np.dot(difpat.flatten(), l_det.flatten())
+        sdet = np.sum(difpat*l_det)
+        return sdet * pfac
 
     def get_mul2d(self, energy_loss_range, single_phonon=False, verbose=0):
         '''
@@ -743,8 +854,7 @@ class phonon_isc:
         where the first dimension samples the requested energy-loss
         range in multiple steps of the internal PDOS sampling set
         with the method set_pdos. The second and third dimensions
-        are the q-grid (qy, qx) defined by set_qgrid sorted according
-        to the numpy.fft.fftfreq method.
+        are the q-grid (qy, qx) defined by set_qgrid.
 
         Parameters
         ----------
@@ -825,6 +935,7 @@ class phonon_isc:
                     # The termination is made when during the current step of expansion
                     # only transitions smaller than a threshold self.pthr compared
                     # to the previous maximum was encountered.
+                    # We increase the LEVEL OF EXCITATION dn = n - m.
                     #
                     nyd = 1 # y state phonon excitation level
                     nxd = 1 # x state phonon excitation level
@@ -941,3 +1052,200 @@ class phonon_isc:
             "l_q" : self.qgrid["l_q"]
         }
 
+    def get_spec_prb(self, probe, energy_loss_range, single_phonon=False, verbose=0):
+        '''
+
+        get_spec_prb
+
+        Calculates a phonon EEL spectrum for a given probe position.
+
+        The calculation is performed for the current atom, detector,
+        PDOS, temperature, and q-grid in a local approximation.
+        
+        The output will be a 1-dimensional array of intensities,
+        sampling the requested energy-loss range in multiple steps
+        of the internal PDOS sampling set with the method set_pdos.
+        The input probe wave function is assumed to be in real space
+        on a grid reciprocal to the q-grid (qy, qx) defined by set_qgrid.
+
+        Parameters
+        ----------
+            probe : 2d numpy array, dtype=np.complex128
+            energy_loss_range : array-like, len=2, type float
+                lower and upper bound of energy-losses in eV
+            single_phonon : boolean, default: False
+                flag: limits to single-phonon excitations
+            verbose : int, default: 0
+                verbosity level for text output
+            
+        Returns
+        -------
+            dict
+                "data" : numpy.ndarray, num_dim=1, dtype=np.float64
+                    phonon EELS spectrum
+                "l_dE" : numpy.ndarray, num_dim=1, dtype=float
+                    energy-loss grid in eV
+
+        '''
+        assert energy_loss_range[0] < energy_loss_range[1], "Invalid energy loss range"
+        # setup the energy loss grid
+        dE = self.pdos["data"]["energy_step"] # set energy step from set_pdos
+        pdos_thr = self.pthr * np.amax(self.pdos["data"]["pdos"])
+        imin = int(energy_loss_range[0] / dE)
+        imax = int(energy_loss_range[1] / dE)
+        l_dE = np.arange(imin, imax+1, 1) * dE # energy loss grid
+        # setup the output array
+        a_eels = np.zeros(len(l_dE), dtype=np.float64)
+        # prepare the calculation
+        self.prepare_qgrid_tpc() # q-grid used in tp calculations is for fft
+        if verbose > 0: print('(get_spec_prb): calculating scattering factors ...')
+        self.prepare_feq_tpc() # prepares fe(q) on the fft q-grid
+
+        # 2) Oscillators and states
+        ntr_total = 0 # count number of all transitions
+        for iep in range(0, len(self.pdos["data"]["energy"])): # loop over phonon energies
+            pdos = self.pdos["data"]["pdos"][iep] # pdos value in the current phonon energy bin
+            if pdos < pdos_thr: # check pdos against probability threshold
+                continue # skip phonon energy
+            ep = self.pdos["data"]["energy"][iep] # current phonon energy
+            if verbose > 0: print('(get_spec_prb): calculating contributions for phonon energy {:.4f} eV (pdos = {:.2f}%) ...'.format(ep, pdos*100.))
+            w = ep / ec.PHYS_HBAREV # oscillator frequency
+            nimax = nmaxt(ep, self.t, self.pthr) # get max. initial state quantum number to take into account
+            if verbose > 0: print('(get_spec_prb): including initial states up to m = {:d} ...'.format(nimax))
+            nrmtbd = (np.exp(ep/self.tev) - 1)**2 / np.exp(ep/self.tev) # normalization factor for the 2-d boltzmann distribution
+            # boltzmann distribution threshold
+            pb_thr = nrmtbd * pbolz(ep, self.t) * self.pthr # 2d ground state occupation time relative threshold
+            if verbose > 0: print('(get_spec_prb): allowing 2d Boltzmann factors above {:.2f}% ...'.format(pb_thr*100.))
+            # per phonon energy (to be weighted by pdos)
+            for niy in range(0, nimax+1): # loop over initial states in the y dimension
+                eiy = ho.En(niy, w) / ec.PHYS_QEL # initial y state energy in eV
+                pby = pbolz(eiy, self.t) # initial y state Boltzmann distribution probability
+                for nix in range(0, nimax+1): # loop over initial states in the x dimension
+                    eix = ho.En(nix, w) / ec.PHYS_QEL # initial x state energy in eV
+                    pbx = pbolz(eix, self.t) # initial x state Boltzmann distribution probability
+                    pb2 = nrmtbd * pbx * pby # normalized occupation of the initial state
+                    if pb2 < pb_thr: continue # 
+                    if verbose > 1: print('(get_spec_prb): * initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(nix,niy,pb2*100.))
+                    #
+                    # Initialize an expanding loop over final states.
+                    # This loop will at least include single phonon excitations.
+                    # It will terminate expanding x and y final states independently.
+                    # The termination is made when during the current step of expansion
+                    # only transitions smaller than a threshold self.pthr compared
+                    # to the previous maximum was encountered.
+                    # We increase the LEVEL OF EXCITATION dn = n - m.
+                    #
+                    nyd = 1 # y state phonon excitation level
+                    nxd = 1 # x state phonon excitation level
+                    ntr = 0 # count for included number of transitions
+                    trsmax = 0. # records max transition strength
+                    trsmaxx = 0. # records max transition strength in x states
+                    trsmaxy = 0. # records max transition strength in y states
+                    bmorefy = True # flags further expansion of y state transition levels
+                    bmorefx = True # flags further expansion of x state transition levels
+                    #
+                    # loop over final states
+                    #
+                    while (bmorefx or bmorefy): # either add more columns or rows of higher multi-phonon levels by final states
+                        #
+                        ntr0 = ntr # transitions before this round
+                        if bmorefy: # add next rows (excluding corners)
+                            trsmaxy = 0.
+                            for nfy in [niy-nyd,niy+nyd]: # nfy row indices
+                                if nfy < 0: continue # skip negative qn
+                                efy = ho.En(nfy, w) / ec.PHYS_QEL # final y state energy
+                                for nfx in range(nix-nxd+1,nix+nxd): # loop nfx from corner+1 to corner-1
+                                    if nfx < 0: continue # skip negative qn
+                                    if (niy == nfy) and (nix == nfx): continue # skip elastic (should actually not happen)
+                                    if single_phonon and (abs(nfx-nix) + abs(nfy-niy) != 1): continue # skip multi-phonons in case of single-phonon calculation
+                                    efx = ho.En(nfx, w) / ec.PHYS_QEL # final x state energy
+                                    delE = efx - eix + efy - eiy # energy loss of the probing electron
+                                    idelE = int(np.rint(delE / dE)) #
+                                    if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                        s = self.get_trstr_tp(probe, ep, nix, nfx, niy, nfy)
+                                        trsmaxy = max(trsmaxy, s)
+                                        jdelE = idelE - imin
+                                        a_eels[jdelE] += (pdos * pb2 * s)
+                                        ntr += 1
+                                    #
+                            # exit criterion for final states y range
+                            if (trsmax > 0.0) and (trsmaxy > 0.0): # global maximum present
+                                if trsmaxy < 0.5 * self.pthr * trsmax: # max. on row loop is less than a threshold -> converged rows
+                                    bmorefy = False
+                        #
+                        if bmorefx: # add columns (excluding corners)
+                            trsmaxx = 0.
+                            for nfx in [nix-nxd,nix+nxd]: # nfx outer column indices
+                                if nfx < 0: continue # skip negative qn
+                                efx = ho.En(nfx, w) / ec.PHYS_QEL # final x state energy
+                                for nfy in range(niy-nyd+1,niy+nyd): # loop nfy from corner+1 to corner-1
+                                    if nfy < 0: continue # skip negative qn
+                                    if (niy == nfy) and (nix == nfx): continue # skip elastic (should actually not happen)
+                                    if single_phonon and (abs(nfx-nix) + abs(nfy-niy) != 1): continue # skip multi-phonons in case of single-phonon calculation
+                                    efy = ho.En(nfy, w) / ec.PHYS_QEL # final x state energy
+                                    delE = efx - eix + efy - eiy # energy loss of the probing electron
+                                    idelE = int(np.rint(delE / dE)) #
+                                    if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                        s = self.get_trstr_tp(probe, ep, nix, nfx, niy, nfy)
+                                        trsmaxx = max(trsmaxx, s)
+                                        jdelE = idelE - imin
+                                        a_eels[jdelE] += (pdos * pb2 * s)
+                                        ntr += 1
+                                    #
+                            # exit criterion for final states x range
+                            if (trsmax > 0.0) and (trsmaxx > 0.0): # global maximum present
+                                if trsmaxx < 0.5 * self.pthr * trsmax: # max. on row loop is less than a threshold -> converged cols
+                                    bmorefx = False
+                        #
+                        # handle corners
+                        if not single_phonon: # corners are always multi-phonon excitations
+                            # add corners (always needed as long as x or y progresses)
+                            for nfy in [niy-nyd,niy+nyd]: # nfy corner row indices
+                                if nfy < 0: continue # skip negative qn
+                                efy = ho.En(nfy, w) / ec.PHYS_QEL # final y state energy
+                                for nfx in [nix-nxd,nix+nxd]: # nfx corner columns indices
+                                    if nfx < 0: continue # skip negative qn
+                                    efx = ho.En(nfx, w) / ec.PHYS_QEL # final x state energy
+                                    delE = efx - eix + efy - eiy # energy loss of the probing electron
+                                    idelE = int(np.rint(delE / dE)) #
+                                    if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                        s = self.get_trstr_tp(probe, ep, nix, nfx, niy, nfy)
+                                        trsmax = max(trsmax, s)
+                                        jdelE = idelE - imin
+                                        a_eels[jdelE] += (pdos * pb2 * s)
+                                        ntr += 1
+                                    #
+                        #
+                        # update controls
+                        if bmorefy:
+                            nyd += 1 # add rows
+                            if verbose > 2: print('(get_spec_prb):   * y transition level raised to {:d}'.format(nyd))
+                            trsmax = max(trsmax, trsmaxy) # maximum update
+                        if bmorefx:
+                            nxd += 1 # add columnss
+                            if verbose > 2: print('(get_spec_prb):   * x transition level raised to {:d}'.format(nxd))
+                            trsmax = max(trsmax, trsmaxx) # maximum update
+                        #
+                        if ntr == ntr0: # stop, because no transition was added, we do not expect more to come
+                            # this catches infinite loops because there are skipping events in the above
+                            bmorefy = False
+                            bmorefx = False
+                        #
+                        if single_phonon: # single-phonon transition case, just stop here
+                            bmorefy = False
+                            bmorefx = False
+                        #
+                    #
+                    ntr_total += ntr # sum total transitions
+                    if verbose > 1: print('(get_spec_prb): * transitions added: {:d}'.format(ntr))
+                    #
+                #
+            #
+        #
+        if verbose > 0: print('(get_spec_prb): total number of transitions considered: {:d}'.format(ntr_total))
+
+        # returning
+        return {
+            "data" : a_eels,
+            "l_dE" : l_dE
+        }

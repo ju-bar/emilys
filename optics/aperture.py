@@ -11,10 +11,10 @@ published under the GNU General Publishing License, version 3
 
 """
 # %%
-from numba import jit # include compilation support
+from numba import njit, float64 # include compilation support
 import numpy as np # include numeric functions
 # %%
-@jit
+@njit(float64(float64[:],float64[:],float64,float64))
 def aperture(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0.):
     """
 
@@ -54,7 +54,7 @@ def aperture(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0.):
         return 0.
     return 0. # default exit
 # %%
-@jit
+@njit
 def aperture_a(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., qa=0., qp=0.):
     """
 
@@ -103,7 +103,7 @@ def aperture_a(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., qa=0
     return 0.
 
 # %%
-@jit
+@njit
 def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., qdist=np.array([])):
     """
 
@@ -164,7 +164,7 @@ def aperture_dist3(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0., 
         return 0.
     return 0. # default exit
 # %%
-@jit
+@njit
 def aperture_grid(arr, p0=np.array([0.,0.]), sq=np.array([[1.,0.],[0.,1.]]),
                   q0=np.array([0.,0.]), qlim=1., qsmt=0.):
     """
@@ -190,12 +190,12 @@ def aperture_grid(arr, p0=np.array([0.,0.]), sq=np.array([[1.,0.],[0.,1.]]),
     #print("dbg aperture_grid: nd = " % nd)
     for j in range(0, nd[1]):
         for i in range(0, nd[0]):
-            dp = np.array([i,j]) - p0
+            dp = np.array([i,j],dtype=sq.dtype) - p0
             q = np.dot(sq,dp)
             arr[j,i] = aperture(q, q0, qlim, qsmt)
     return 0
 # %%
-@jit
+@njit
 def aperture_a_grid(arr, p0=np.array([0.,0.]),
                     sq=np.array([[1.,0.],[0.,1.]]),
                     q0=np.array([0.,0.]),
@@ -232,7 +232,7 @@ def aperture_a_grid(arr, p0=np.array([0.,0.]),
             arr[j,i] = aperture_a(q, q0, qlim, qsmt, qa, qp)
     return 0
 # %%
-@jit
+@njit
 def aperture_dist3_grid(arr, p0=np.array([0.,0.]),
                         sq=np.array([[1.,0.],[0.,1.]]),
                         q0=np.array([0.,0.]), qlim=1., qsmt=0.,
@@ -272,7 +272,7 @@ def aperture_dist3_grid(arr, p0=np.array([0.,0.]),
             arr[j,i] = aperture_dist3(q, q0, qlim, qsmt, qdist)
     return 0
 #%%
-@jit
+@njit
 def hann(n):
     '''
     Returns a 1d preset with a Hann window.
