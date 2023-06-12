@@ -387,6 +387,28 @@ class phonon_isc:
         self.atom = { # atom definition
         }
 
+    def set_probability_threshold(self, prob_threshold=0.05):
+        '''
+
+        Sets a new probability threshold.
+
+        This threshold is applied in calculations to determine relevant
+        contributions when averaging over the phonon density of states
+        and for the thermal averaging. The threshold is taken relative
+        to the largest value of the PDOS or the Boltzmann distribution.
+
+        Parameters
+        ----------
+            prob_threshold : float, default: 0.05
+                relative probability threshold
+
+        Returns
+        -------
+            None
+
+        '''
+        self.pthr = np.abs(prob_threshold) # only positive values
+
     def set_qgrid(self, qmax, n):
         '''
 
@@ -927,7 +949,7 @@ class phonon_isc:
                     pbx = pbolz(eix, self.t) # initial x state Boltzmann distribution probability
                     pb2 = nrmtbd * pbx * pby # normalized occupation of the initial state
                     if pb2 < pb_thr: continue # 
-                    if verbose > 1: print('(get_mul2d): * initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(nix,niy,pb2*100.))
+                    if verbose > 1: print('(get_mul2d): * [{:.4f} eV] initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(ep,nix,niy,pb2*100.))
                     #
                     # Initialize an expanding loop over final states.
                     # This loop will at least include single phonon excitations.
@@ -1057,7 +1079,7 @@ class phonon_isc:
 
         get_spec_prb
 
-        Calculates a phonon EEL spectrum for a given probe position.
+        Calculates a phonon EEL spectrum for a given probe.
 
         The calculation is performed for the current atom, detector,
         PDOS, temperature, and q-grid in a local approximation.
@@ -1065,12 +1087,15 @@ class phonon_isc:
         The output will be a 1-dimensional array of intensities,
         sampling the requested energy-loss range in multiple steps
         of the internal PDOS sampling set with the method set_pdos.
+
         The input probe wave function is assumed to be in real space
-        on a grid reciprocal to the q-grid (qy, qx) defined by set_qgrid.
+        and normalized on a grid reciprocal to the q-grid (qy, qx)
+        defined by set_qgrid.
 
         Parameters
         ----------
             probe : 2d numpy array, dtype=np.complex128
+                probe wavefunction in real space
             energy_loss_range : array-like, len=2, type float
                 lower and upper bound of energy-losses in eV
             single_phonon : boolean, default: False
@@ -1125,7 +1150,7 @@ class phonon_isc:
                     pbx = pbolz(eix, self.t) # initial x state Boltzmann distribution probability
                     pb2 = nrmtbd * pbx * pby # normalized occupation of the initial state
                     if pb2 < pb_thr: continue # 
-                    if verbose > 1: print('(get_spec_prb): * initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(nix,niy,pb2*100.))
+                    if verbose > 1: print('(get_spec_prb): * [{:.4f} eV] initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(ep,nix,niy,pb2*100.))
                     #
                     # Initialize an expanding loop over final states.
                     # This loop will at least include single phonon excitations.
@@ -1237,12 +1262,16 @@ class phonon_isc:
                         #
                     #
                     ntr_total += ntr # sum total transitions
-                    if verbose > 1: print('(get_spec_prb): * transitions added: {:d}'.format(ntr))
+                    if verbose > 1:
+                        print('(get_spec_prb): * transitions added: {:d}'.format(ntr))
+                        print('(get_spec_prb): * total (not to scale): {:.4E}'.format(np.sum(a_eels)))
                     #
                 #
             #
         #
-        if verbose > 0: print('(get_spec_prb): total number of transitions considered: {:d}'.format(ntr_total))
+        if verbose > 0:
+            print('(get_spec_prb): total number of transitions considered: {:d}'.format(ntr_total))
+            print('(get_spec_prb): * total (not to scale): {:.4E}'.format(np.sum(a_eels)))
 
         # returning
         return {
