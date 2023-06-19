@@ -1010,7 +1010,7 @@ class phonon_isc:
                     eix = ho.En(nix, w) / ec.PHYS_QEL # initial x state energy in eV
                     pbx = pbolz(eix, self.t) # initial x state Boltzmann distribution probability
                     pb2 = nrmtbd * pbx * pby # normalized occupation of the initial state
-                    #if pb2 < pb_thr: continue # 
+                    if pb2 < pb_thr: continue # 
                     if verbose > 1: print('(get_mul2d): * [{:.4f} eV] initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(ep,nix,niy,pb2*100.))
                     #
                     # Initialize an expanding loop over final states.
@@ -1136,7 +1136,7 @@ class phonon_isc:
             "l_q" : self.qgrid["l_q"]
         }
 
-    def get_spec_prb(self, probe, energy_loss_range, single_phonon=False, single_scattering=True, verbose=0):
+    def get_spec_prb(self, probe, energy_loss_range, single_phonon=False, double_scattering_level=0, verbose=0):
         '''
 
         get_spec_prb
@@ -1162,8 +1162,8 @@ class phonon_isc:
                 lower and upper bound of energy-losses in eV
             single_phonon : boolean, default: False
                 flag: limits to single-phonon excitations
-            single_scattering : boolean, default: True
-                flag: limits to single inelastic scattering
+            double_scattering_level : int, default: 0
+                limits the phonon excitation levels of double-scattering
             verbose : int, default: 0
                 verbosity level for text output
             
@@ -1350,12 +1350,14 @@ class phonon_isc:
             #
         #
         #
-        if (not single_scattering) and (len(self.pdos["data"]["energy"]) > 1): # add some multiple inelastic scattering
+        if (double_scattering_level > 0) and (len(self.pdos["data"]["energy"]) > 1): # add some multiple inelastic scattering
             #
             # double inelastic scattering (processes with two transition potentials)
             # but only single-phonon excitations
             # * set double scattering pdos threshold
             pdos2_thr = self.pthr * np.amax(self.pdos["data"]["pdos"])**2
+            # * shortcut for the excitation level
+            dsl = double_scattering_level
             #
             # double inelastic scattering with the same phonon energy
             # (diagonal terms with special sequence of excitation)
@@ -1384,59 +1386,85 @@ class phonon_isc:
                         if pb2 < pb_thr: continue # skip due to low combined initial state occupation probability
                         if verbose > 1: print('(get_spec_prb): * [{:.4f} eV] initial state of 1st excitation [{:d},{:d}] (pbol = {:.2f}%) ...'.format(ep,nix1,niy1,pb2*100.))
                         # initial state and energy of the first transition
-                        ni1 = [nix1, niy1]
                         ei1 = eix1 + eiy1
-                        # start with final states of the first single-phonon excitation
-                        l_nf1 = [[nix1 + 1, niy1], [nix1, niy1 + 1]] # 2 single phonon excitations
-                        l_ef1 = [ei1 + ep, ei1 + ep] # ... 2 energies
-                        # add possible final states of the first single-phonon de-excitation
-                        if nix1 > 0:
-                            l_nf1.append([nix1 - 1, niy1])
-                            l_ef1.append(ei1 - ep)
-                        if niy1 > 0:
-                            l_nf1.append([nix1, niy1 - 1])
-                            l_ef1.append(ei1 - ep)
-                        # loop over final states of the first transition, which are the initial states of
-                        # the second transition and then determine the states and energies of the final
-                        # states of the second transition
-                        l_nf2 = []
-                        l_ef2 = []
-                        for idf1 in range(0, len(l_nf1)):
-                            # second single-phonon excitations
-                            l_nf2.append([l_nf1[idf1][0] + 1, l_nf1[idf1][1]])
-                            l_ef2.append(l_ef1[idf1] + ep)
-                            l_nf2.append([l_nf1[idf1][0], l_nf1[idf1][1] + 1])
-                            l_ef2.append(l_ef1[idf1] + ep)
-                            # possible second single-phonon de-excitations
-                            if l_nf1[idf1][0] > 0:
-                                l_nf2.append([l_nf1[idf1][0] - 1, l_nf1[idf1][1]])
-                                l_ef2.append(l_ef1[idf1] - ep)
-                            if l_nf1[idf1][1] > 0:
-                                l_nf2.append([l_nf1[idf1][0], l_nf1[idf1][1] - 1])
-                                l_ef2.append(l_ef1[idf1] - ep)
                         #
                         ntr = 0
-                        #
-                        # accumulate transition strengths to the spectrum
-                        for idf1 in range(0, len(l_nf1)):
-                            nfx1 = l_nf1[idf1][0]
-                            nfy1 = l_nf1[idf1][1]
-                            nix2 = nfx1
+                        for nfy1 in range(niy1-dsl, niy1+dsl+1):
+                            if nfy1 < 0: continue
                             niy2 = nfy1
-                            for idf2 in range(0, len(l_nf2)):
-                                nfx2 = l_nf2[idf2][0]
-                                nfy2 = l_nf2[idf2][1]
-                                ef2 = l_ef2[idf2]
-                                delE = ef2 - ei1 # energy loss of the probing electron
-                                idelE = int(np.rint(delE / dE)) #
-                                if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
-                                    s = self.get_trstr_tp_ms(probe, [ep,ep],
-                                                                [nix1,nix2], [nfx1,nfx2],
-                                                                [niy1,niy2], [nfy1,nfy2])
-                                    jdelE = idelE - imin
-                                    a_eels_dmuls[jdelE] += (pdos * pb2 * s) # weighted by pdos and pbolz
-                                    ntr += 1
-                        #
+                            for nfx1 in range(nix1-dsl, nix1+dsl+1):
+                                if nfx1 < 0: continue
+                                nix2 = nfx1
+                                if (nfy1==niy1) and (nfx1==niy1): continue # skip no change of state
+                                for nfy2 in range(niy2-dsl, niy2+dsl+1):
+                                    if nfy2 < 0: continue
+                                    efy2 = ho.En(nfy2, w) / ec.PHYS_QEL # final y state 2 energy in eV
+                                    for nfx2 in range(nix2-dsl, nix2+dsl+1):
+                                        if nfx2 < 0: continue
+                                        if (nfy2==niy2) and (nfx2==niy2): continue # skip no change of state
+                                        efx2 = ho.En(nfx2, w) / ec.PHYS_QEL # final x state 2 energy in eV
+                                        ef2 = efy2 + efx2
+                                        delE = ef2 - ei1 # energy loss of the probing electron
+                                        idelE = int(np.rint(delE / dE)) #
+                                        if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                            s = self.get_trstr_tp_ms(probe, [ep,ep],
+                                                                        [nix1,nix2], [nfx1,nfx2],
+                                                                        [niy1,niy2], [nfy1,nfy2])
+                                            jdelE = idelE - imin
+                                            a_eels_dmuls[jdelE] += (pdos * pb2 * s) # weighted by pdos and pbolz
+                                            ntr += 1
+
+                        # # start with final states of the first single-phonon excitation
+                        # l_nf1 = [[nix1 + 1, niy1], [nix1, niy1 + 1]] # 2 single phonon excitations
+                        # l_ef1 = [ei1 + ep, ei1 + ep] # ... 2 energies
+                        # # add possible final states of the first single-phonon de-excitation
+                        # if nix1 > 0:
+                        #     l_nf1.append([nix1 - 1, niy1])
+                        #     l_ef1.append(ei1 - ep)
+                        # if niy1 > 0:
+                        #     l_nf1.append([nix1, niy1 - 1])
+                        #     l_ef1.append(ei1 - ep)
+                        # # loop over final states of the first transition, which are the initial states of
+                        # # the second transition and then determine the states and energies of the final
+                        # # states of the second transition
+                        # l_nf2 = []
+                        # l_ef2 = []
+                        # for idf1 in range(0, len(l_nf1)):
+                        #     # second single-phonon excitations
+                        #     l_nf2.append([l_nf1[idf1][0] + 1, l_nf1[idf1][1]])
+                        #     l_ef2.append(l_ef1[idf1] + ep)
+                        #     l_nf2.append([l_nf1[idf1][0], l_nf1[idf1][1] + 1])
+                        #     l_ef2.append(l_ef1[idf1] + ep)
+                        #     # possible second single-phonon de-excitations
+                        #     if l_nf1[idf1][0] > 0:
+                        #         l_nf2.append([l_nf1[idf1][0] - 1, l_nf1[idf1][1]])
+                        #         l_ef2.append(l_ef1[idf1] - ep)
+                        #     if l_nf1[idf1][1] > 0:
+                        #         l_nf2.append([l_nf1[idf1][0], l_nf1[idf1][1] - 1])
+                        #         l_ef2.append(l_ef1[idf1] - ep)
+                        # #
+                        # ntr = 0
+                        # #
+                        # # accumulate transition strengths to the spectrum
+                        # for idf1 in range(0, len(l_nf1)):
+                        #     nfx1 = l_nf1[idf1][0]
+                        #     nfy1 = l_nf1[idf1][1]
+                        #     nix2 = nfx1
+                        #     niy2 = nfy1
+                        #     for idf2 in range(0, len(l_nf2)):
+                        #         nfx2 = l_nf2[idf2][0]
+                        #         nfy2 = l_nf2[idf2][1]
+                        #         ef2 = l_ef2[idf2]
+                        #         delE = ef2 - ei1 # energy loss of the probing electron
+                        #         idelE = int(np.rint(delE / dE)) #
+                        #         if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                        #             s = self.get_trstr_tp_ms(probe, [ep,ep],
+                        #                                         [nix1,nix2], [nfx1,nfx2],
+                        #                                         [niy1,niy2], [nfy1,nfy2])
+                        #             jdelE = idelE - imin
+                        #             a_eels_dmuls[jdelE] += (pdos * pb2 * s) # weighted by pdos and pbolz
+                        #             ntr += 1
+                        # #
                         ntr_total += ntr # sum total transitions
                         if verbose > 1:
                             print('(get_spec_prb): * transitions added: {:d}'.format(ntr))
@@ -1484,48 +1512,79 @@ class phonon_isc:
                                     pb4 = nrmtbd * pb21 * pb22 # normalized combined occupation
                                     if pb4 < pb2_thr: continue # skip due to low combined initial state occupation probability
                                     if verbose > 1: print('(get_spec_prb): * [({:.4f},{:.4f}) eV] initial state ([{:d},{:d}],[{:d},{:d}]) (pbol = {:.2f}%) ...'.format(ep1,ep2,nix1,niy1,nix2,niy2,pb4*100.))
-                                    l_schemei = np.array([[nix1, niy1], [nix2, niy2]], dtype=int) # initial state scheme
-                                    l_energyi = np.array([[eix1, eiy1], [eix2, eiy2]], dtype=float) # initial state energies
-                                    l_freq = np.array([w1, w2], dtype=float) # initial state frequencies
-                                    ei_all = np.sum(l_energyi) # total initial state energy
                                     #
-                                    # final states loop (single_phonon only)
+                                    ei_all = eix1 + eiy1 + eix2 + eiy2 # inital state energy
+                                    #
                                     ntr = 0
-                                    # excitations first
-                                    for ise in range(0, 2): # loop over scattering events
-                                        for imd in range(0, 2): # loop over modes
-                                            l_schemef = l_schemei.copy()
-                                            l_energyf = l_energyi.copy()
-                                            l_schemef[ise,imd] += 1 # raise final state of current mode
-                                            l_energyf[ise,imd] = ho.En(l_schemef[ise,imd], l_freq[ise]) / ec.PHYS_QEL # changed final state energy
-                                            ef_all = np.sum(l_energyf)
-                                            delE = ef_all - ei_all # energy loss of the probing electron
-                                            idelE = int(np.rint(delE / dE)) #
-                                            if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
-                                                s = self.get_trstr_tp_ms(probe, [ep1,ep2],
-                                                                            [nix1,nix2], [l_schemef[0][0], l_schemef[1][0]],
-                                                                            [niy1,niy2], [l_schemef[0][1], l_schemef[1][1]])
-                                                jdelE = idelE - imin
-                                                a_eels_dmuls[jdelE] += (pdos * pb4 * s * 4.0) # weight 4 due to possible two sequences
-                                                ntr += 1
-                                    # de-excitations second
-                                    for ise in range(0, 2): # loop over scattering events
-                                        for imd in range(0, 2): # loop over modes
-                                            if l_schemei[ise,imd] == 0: continue # skip ground states
-                                            l_schemef = l_schemei.copy()
-                                            l_energyf = l_energyi.copy()
-                                            l_schemef[ise,imd] -= 1 # raise final state of current mode
-                                            l_energyf[ise,imd] = ho.En(l_schemef[ise,imd], l_freq[ise]) / ec.PHYS_QEL # changed final state energy
-                                            ef_all = np.sum(l_energyf)
-                                            delE = ef_all - ei_all # energy loss of the probing electron
-                                            idelE = int(np.rint(delE / dE)) #
-                                            if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
-                                                s = self.get_trstr_tp_ms(probe, [ep1,ep2],
-                                                                            [nix1,nix2], [l_schemef[0][0], l_schemef[1][0]],
-                                                                            [niy1,niy2], [l_schemef[0][1], l_schemef[1][1]])
-                                                jdelE = idelE - imin
-                                                a_eels_dmuls[jdelE] += (pdos * pb4 * s * 4.0) # weight 2 due to possible two sequences
-                                                ntr += 1
+                                    #
+                                    for nfy1 in range(niy1-dsl, niy1+dsl+1):
+                                        if nfy1 < 0: continue
+                                        efy1 = ho.En(nfy1, w1) / ec.PHYS_QEL # final y state 2 energy in eV
+                                        for nfx1 in range(nix1-dsl, nix1+dsl+1):
+                                            if nfx1 < 0: continue
+                                            if (nfy1==niy1) and (nfx1==niy1): continue # skip no change of state
+                                            efx1 = ho.En(nfx1, w1) / ec.PHYS_QEL # final y state 2 energy in eV
+                                            for nfy2 in range(niy2-dsl, niy2+dsl+1):
+                                                if nfy2 < 0: continue
+                                                efy2 = ho.En(nfy2, w2) / ec.PHYS_QEL # final y state 2 energy in eV
+                                                for nfx2 in range(nix2-dsl, nix2+dsl+1):
+                                                    if nfx2 < 0: continue
+                                                    if (nfy2==niy2) and (nfx2==niy2): continue # skip no change of state
+                                                    efx2 = ho.En(nfx2, w2) / ec.PHYS_QEL # final x state 2 energy in eV
+                                                    ef_all = efy1 + efx1 + efy2 + efx2
+                                                    delE = ef_all - ei_all # energy loss of the probing electron
+                                                    idelE = int(np.rint(delE / dE)) #
+                                                    if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                                        s = self.get_trstr_tp_ms(probe, [ep1,ep2],
+                                                                                    [nix1,nix2], [nfx1,nfx2],
+                                                                                    [niy1,niy2], [nfy1,nfy2])
+                                                        jdelE = idelE - imin
+                                                        a_eels_dmuls[jdelE] += (pdos * pb2 * s * 4.0) # weighted by pdos and pbolz * 4 due to two possibilities
+                                                        ntr += 1
+
+
+                                    # l_schemei = np.array([[nix1, niy1], [nix2, niy2]], dtype=int) # initial state scheme
+                                    # l_energyi = np.array([[eix1, eiy1], [eix2, eiy2]], dtype=float) # initial state energies
+                                    # l_freq = np.array([w1, w2], dtype=float) # initial state frequencies
+                                    # ei_all = np.sum(l_energyi) # total initial state energy
+                                    # #
+                                    # # final states loop (single_phonon only)
+                                    # ntr = 0
+                                    # # excitations first
+                                    # for ise in range(0, 2): # loop over scattering events
+                                    #     for imd in range(0, 2): # loop over modes
+                                    #         l_schemef = l_schemei.copy()
+                                    #         l_energyf = l_energyi.copy()
+                                    #         l_schemef[ise,imd] += 1 # raise final state of current mode
+                                    #         l_energyf[ise,imd] = ho.En(l_schemef[ise,imd], l_freq[ise]) / ec.PHYS_QEL # changed final state energy
+                                    #         ef_all = np.sum(l_energyf)
+                                    #         delE = ef_all - ei_all # energy loss of the probing electron
+                                    #         idelE = int(np.rint(delE / dE)) #
+                                    #         if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                    #             s = self.get_trstr_tp_ms(probe, [ep1,ep2],
+                                    #                                         [nix1,nix2], [l_schemef[0][0], l_schemef[1][0]],
+                                    #                                         [niy1,niy2], [l_schemef[0][1], l_schemef[1][1]])
+                                    #             jdelE = idelE - imin
+                                    #             a_eels_dmuls[jdelE] += (pdos * pb4 * s * 4.0) # weight 4 due to possible two sequences
+                                    #             ntr += 1
+                                    # # de-excitations second
+                                    # for ise in range(0, 2): # loop over scattering events
+                                    #     for imd in range(0, 2): # loop over modes
+                                    #         if l_schemei[ise,imd] == 0: continue # skip ground states
+                                    #         l_schemef = l_schemei.copy()
+                                    #         l_energyf = l_energyi.copy()
+                                    #         l_schemef[ise,imd] -= 1 # raise final state of current mode
+                                    #         l_energyf[ise,imd] = ho.En(l_schemef[ise,imd], l_freq[ise]) / ec.PHYS_QEL # changed final state energy
+                                    #         ef_all = np.sum(l_energyf)
+                                    #         delE = ef_all - ei_all # energy loss of the probing electron
+                                    #         idelE = int(np.rint(delE / dE)) #
+                                    #         if (idelE >= imin) and (idelE <= imax): # energy loss is in the requested range
+                                    #             s = self.get_trstr_tp_ms(probe, [ep1,ep2],
+                                    #                                         [nix1,nix2], [l_schemef[0][0], l_schemef[1][0]],
+                                    #                                         [niy1,niy2], [l_schemef[0][1], l_schemef[1][1]])
+                                    #             jdelE = idelE - imin
+                                    #             a_eels_dmuls[jdelE] += (pdos * pb4 * s * 4.0) # weight 2 due to possible two sequences
+                                    #             ntr += 1
                                     #
                                     ntr_total += ntr # sum total transitions
                                     if verbose > 1:
