@@ -909,13 +909,18 @@ class phonon_isc:
         assert nms > 0, 'This requires list inputs of at least length 1.'
         pfac = 1.0 # * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
         # ^^    need to clarify the units here
+        ndim = np.array(probe.shape)
+        pfac_pix = np.sqrt(ndim[0] * ndim[1])
+        # calculate transition potential -> h
         h = self.get_tpq(ep[0], mx[0], nx[0], my[0], ny[0])
+        # calculate inelastic wave function after first transition (real-space)
+        pinel = probe * np.fft.ifft2(h) # ... (missing I sigma ) ...
         if (nms > 1):
             for ims in range(1, nms):
                 # calculate transition potential -> h
-                h *= self.get_tpq(ep[ims], mx[ims], nx[ims], my[ims], ny[ims])
+                h = self.get_tpq(ep[ims], mx[ims], nx[ims], my[ims], ny[ims])
+                pinel = (pinel * np.fft.ifft2(h) * pfac_pix) # ... apply next TP in real space
         # calculate inelastic wave function (multiply h in real space)
-        pinel = probe * np.fft.ifft2(h) # ... (missing I sigma ) ...
         pinelq = np.fft.fft2(pinel) # inelastic wavefunction in q-space
         # inelastic diffraction pattern
         difpat = pinelq.real**2 + pinelq.imag**2
