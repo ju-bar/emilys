@@ -123,10 +123,10 @@ def tsq(q, us, m, n):
     dn = nhi - nlo # transition level
     #gl = genlaguerre(m, dn, monic=True) # generalized laguerre polynomial
     gl = genlaguerre(nlo, dn) # generalized laguerre polynomial
-    b = -2.0 * np.pi * q * np.sqrt(us) # b parameter
+    b = np.float64(-2.0 * np.pi * q * np.sqrt(us)) # b parameter
     b2 = b * b # b^2
-    nlof = float(np.math.factorial(nlo)) # m!
-    nhif = float(np.math.factorial(nhi)) # n!
+    nlof = np.float64(np.math.factorial(nlo)) # m!
+    nhif = np.float64(np.math.factorial(nhi)) # n!
     cf = np.power(b * 1.0J, dn)
     s = cf * gl(b2) * np.exp(-0.5*b2) * np.sqrt(nlof/nhif)
     return np.complex128(s)

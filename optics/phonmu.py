@@ -18,6 +18,7 @@ from scipy import interpolate
 import emilys.optics.econst as ec
 import emilys.optics.tp1dho as ho
 import emilys.optics.waki as sfac
+from emilys.optics.aperture import aperture
 
 def pbolz(e, t):
     '''
@@ -221,8 +222,8 @@ def resample_pdos(l_ev, l_pdos, dE, pdos_ip_kind='linear'):
     return s1, e2, p2n
 
 
-@jit(int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True, parallel=True)
-def numint_muh(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
+@jit(int64(int64[:], int64, int64, int64[:,:], float64[:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True, parallel=True)
+def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
     '''
     numint_muh
 
@@ -240,7 +241,7 @@ def numint_muh(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
     oscillator wave functions a_n(t) and a_m(t), because these functions are real valued.
 
     Compiled code using jit.
-    int64(int64[:], int64, int64, int64[:,:], complex128[:], complex128[:], float64[:,:], float64[:,:])
+    int64(int64[:], int64, int64, int64[:,:], float64[:], complex128[:], complex128[:], float64[:,:], float64[:,:])
 
     Parameters
     ----------
@@ -252,6 +253,8 @@ def numint_muh(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
             offset of the original grid in the the extended grid y dimension
         dethash : int64[:,:], shape=(nd, 2)
             pixel indices on the original q-grid falling into the detector
+        detval: float64[:], shape(nd)
+            detector sensitivity for each pixel of the table dethash
         tmx : complex128[:], shape(nextended_x)
             transition matrix element of the x mode, calculated on the extended grid
         tmy : complex128[:], shape(nextended_y)
@@ -273,6 +276,7 @@ def numint_muh(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
     imuh = np.zeros((n,n), dtype=np.float64)
     for idet in range(0, nd): # run over detector pixels -> (qy, qx)
         jdet = dethash[idet] # (qy, qx) indices in the original grid
+        sdet = detval[idet] # detector sensitivity
         jq2 = jdet[0] + iqey # index of qy in the extended array
         jq1 = jdet[1] + iqex # index of qx in the extended array
         pq = tmx[jq1] * tmy[jq2] # tmx(qx) * tmy(qy)
@@ -306,7 +310,7 @@ def numint_muh(l_qi, iqex, iqey, dethash, tmx, tmy, feq, muh):
                 p = np.double((pq * pqh).real) # product of 2d matrix elements -> is always real valued but positive or negative
                 imuh[i2,i1] = p * feq[j2,j1] * feqq # store on h-grid per detector pixel
         #
-        muh[0:n,0:n] += imuh[0:n,0:n] # avoid racing condition by accumulating out of the parallel loop
+        muh[0:n,0:n] += (imuh[0:n,0:n] * sdet) # avoid racing condition by accumulating out of the parallel loop
         #
     return 0
 
@@ -542,18 +546,34 @@ class phonon_isc:
         l_qi = self.qgrid["l_qi"]
         l_det = np.zeros((nq,nq), dtype=np.double) # detector function
         l_dethash = []
+        l_detvals = []
         q0 = self.det["center"]
+        rq0 = np.array([q0[1],q0[0]], dtype=np.float64)
         qd0 = self.det["inner"]
         qd1 = self.det["outer"]
-        l_dqy2 = (l_q - q0[0])**2
-        l_dqx2 = (l_q - q0[1])**2
+        psmt = np.float64(self.det["edge_smooth"] * (l_q[1] - l_q[0]))
+        #l_dqy2 = (l_q - q0[0])**2
+        #l_dqx2 = (l_q - q0[1])**2
         iqr = [[nq,-nq],[nq,-nq]] # min and max frequencies of the detector in rows and columns
+        dthr = self.det["transmission_threshold"]
         for i in range(0, nq): # qy
+            qy = l_q[i]
             for j in range(0, nq): # qx
-                q = np.sqrt(l_dqy2[i] + l_dqx2[j])
-                if (q >= qd0) and (q < qd1):
-                    l_det[i,j] = 1.
+                qx = l_q[j]
+                vq = np.array([qx,qy], dtype=np.float64)
+                vi = 0.0
+                if qd0 > 0:
+                    vi = aperture(vq, rq0, np.float64(qd0), psmt)
+                va = aperture(vq, rq0, np.float64(qd1), psmt)
+                v = va - vi
+            
+                #q = np.sqrt(l_dqy2[i] + l_dqx2[j])
+                #if (q >= qd0) and (q < qd1):
+
+                if v > dthr:
+                    l_det[i,j] = v
                     l_dethash.append([i,j])
+                    l_detvals.append(v)
                     iqr[0][0] = min(iqr[0][0], l_qi[i])
                     iqr[0][1] = max(iqr[0][1], l_qi[i])
                     iqr[1][0] = min(iqr[1][0], l_qi[j])
@@ -562,10 +582,11 @@ class phonon_isc:
         self.det["grid_fft"] = np.roll(l_det, shift=(-nq2, -nq2), axis=(0, 1))
         self.det["hash"] = {
             "index" : np.array(l_dethash, dtype=np.int64),
+            "value" : np.array(l_detvals, dtype=np.float64),
             "ifreq_range" : np.array(iqr, dtype=np.int64)
         }
 
-    def set_detector(self, inner, outer, center):
+    def set_detector(self, inner, outer, center, det_smooth=1.0, det_threshold=0.001):
         '''
 
         set_detector
@@ -583,6 +604,10 @@ class phonon_isc:
                 outer collection range limitation in 1/A
             center : array of floats (len = 2)
                 center position (qy, qx) of the detector in the diffraction plane in 1/A
+            det_smooth : float, default: 0.5
+                detector edge smoothness in fractions of the q grid step
+            det_threshold : float, default: 0.001
+                detector transmisson threshold
         
         Returns
         -------
@@ -592,6 +617,8 @@ class phonon_isc:
         self.det["inner"] = inner
         self.det["outer"] = outer
         self.det["center"] = center
+        self.det["edge_smooth"] = det_smooth
+        self.det["transmission_threshold"] = det_threshold
         self.prepare_detector()
 
     def set_temperatur(self, T):
@@ -828,7 +855,8 @@ class phonon_isc:
         hy = ho.tsq(l_qey, u02, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
         sdet = np.zeros((n,n), dtype=np.double) # detector sum on the original q grid
         dethash = self.det["hash"]["index"]
-        j = numint_muh(l_qi, l_gsh[1], l_gsh[0], dethash, hx, hy, feq, sdet)
+        detvals = self.det["hash"]["value"]
+        j = numint_muh(l_qi, l_gsh[1], l_gsh[0], dethash, detvals, hx, hy, feq, sdet)
         return sdet * pfac
     
     def get_tpq(self, ep, mx, nx, my, ny):
@@ -876,13 +904,16 @@ class phonon_isc:
 
         '''
         l_det = self.det["grid_fft"]
-        pfac = 1.0 # * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        dq = self.qgrid["dq"]
+        pfac = 1.0 # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        sca_ift = 1.0 # dq * dq # iFT scaling factor 
+        sca_ft = 1.0 # dq * dq # FT scaling factor 
         # ^^    need to clarify the units here
         # calculate transition potential -> h
         h = self.get_tpq(ep, mx, nx, my, ny)
         # calculate inelastic wave function (multiply h in real space)
-        pinel = probe * np.fft.ifft2(h) # ... (missing I sigma ) ...
-        pinelq = np.fft.fft2(pinel) # inelastic wavefunction in q-space
+        pinel = probe * np.fft.ifft2(h) * sca_ift # ... (missing I sigma ) ...
+        pinelq = np.fft.fft2(pinel) * sca_ft # inelastic wavefunction in q-space
         # inelastic diffraction pattern
         difpat = pinelq.real**2 + pinelq.imag**2
         # ... integration over the detector area
@@ -907,21 +938,22 @@ class phonon_isc:
         l_det = self.det["grid_fft"]
         nms = len(ep) # number of scattering events (assume all other input is likewise of that length)
         assert nms > 0, 'This requires list inputs of at least length 1.'
-        pfac = 1.0 # * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        pfac = 1.0 # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        sca_ift = 1.0 # dq * dq # iFT scaling factor 
+        sca_ft = 1.0 # dq * dq # FT scaling factor 
         # ^^    need to clarify the units here
         ndim = np.array(probe.shape)
-        pfac_pix = np.sqrt(ndim[0] * ndim[1])
         # calculate transition potential -> h
         h = self.get_tpq(ep[0], mx[0], nx[0], my[0], ny[0])
         # calculate inelastic wave function after first transition (real-space)
-        pinel = probe * np.fft.ifft2(h) # ... (missing I sigma ) ...
+        pinel = probe * np.fft.ifft2(h) * sca_ift # ... (missing I sigma ) ...
         if (nms > 1):
             for ims in range(1, nms):
                 # calculate transition potential -> h
                 h = self.get_tpq(ep[ims], mx[ims], nx[ims], my[ims], ny[ims])
-                pinel = (pinel * np.fft.ifft2(h) * pfac_pix) # ... apply next TP in real space
+                pinel = (pinel * np.fft.ifft2(h) * sca_ift) # ... apply next TP in real space
         # calculate inelastic wave function (multiply h in real space)
-        pinelq = np.fft.fft2(pinel) # inelastic wavefunction in q-space
+        pinelq = np.fft.fft2(pinel) * sca_ft # inelastic wavefunction in q-space
         # inelastic diffraction pattern
         difpat = pinelq.real**2 + pinelq.imag**2
         # ... integration over the detector area

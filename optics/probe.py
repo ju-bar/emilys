@@ -24,10 +24,11 @@ def get_probe_q(a, dq, q0, qa):
     aq1 = dq[1] * (((np.arange(0, ndim[1]) + ndim2[1]) % ndim[1]) - ndim2[1])
     aq2 = dq[0] * (((np.arange(0, ndim[0]) + ndim2[0]) % ndim[0]) - ndim2[0])
     s = 0.0
+    smt = np.float64(0.5 * (dq[0]+dq[1]))
     for i in range(0, ndim[0]):
         for j in range(0, ndim[1]):
             vq = np.array([aq1[j],aq2[i]], dtype=np.float64)
-            v = aperture(vq, lq0, np.float64(qa), np.float64(0.0))
+            v = aperture(vq, lq0, np.float64(qa), smt)
             a[i,j] = v
             s += v*v
     a[:,:] = a / np.sqrt(s)
