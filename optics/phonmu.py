@@ -18,6 +18,7 @@ from scipy import interpolate
 import emilys.optics.econst as ec
 import emilys.optics.tp1dho as ho
 import emilys.optics.waki as sfac
+import emilys.optics.probe as prb
 from emilys.optics.aperture import aperture
 
 def pbolz(e, t):
@@ -315,32 +316,6 @@ def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
     return 0
 
 
-def npint_muh(l_qi, iqex, iqey, det, tmx, tmy, feq):
-    '''
-    npint_muh
-
-    Calculates mu_h for a given pair of matrix elements tmx, tmy, detector
-    function det and electron scattering factors feq.
-    This is for a local approximation in which det(q) is 1 for all q.
-    The approximation becomes bad for smaller detectors, i.e. when only
-    a few det(q) = 1 and most others are 0.
-
-    mu_{n,m}(h) = sum_q det(q) fe(q-h) fe(q) <a_n(t)|exp(2pi I (q-h).t)|a_m(t)> <a_n(t)|exp(-2pi I q.t)|a_m(t)>
-
-    This is vor vectors h, q, t, m, and n and the sum over q is performed on shifted
-    grids q-h and q.
-    Vector m is the initial state and n is the final state set of oscillator quantum numbers.
-    Transition matrix elements tmx and tmy are for the two oscillator modes and the 2d
-    version is spanned by an outer product here on the extended grid.    
-
-    Note also that
-    tm(q) = <a_n(t)|exp(-2pi I q.t)|a_m(t)>
-    tm*(q-h) = <a_n(t)|exp(2pi I (q-h).t)|a_m(t)>
-    for harmonic oscillator wave functions a_n(t) and a_m(t), because these functions are real valued.
-
-    '''
-    tm = np.outer(tmx, tmy) # transition matrix element on the extended grid
-    
 
 
 # ----------------------------------------------------------------------
@@ -905,20 +880,18 @@ class phonon_isc:
         '''
         l_det = self.det["grid_fft"]
         dq = self.qgrid["dq"]
+        a = np.array([1./dq, 1./dq])
         pfac = 1.0 # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
-        sca_ift = 1.0 # dq * dq # iFT scaling factor 
-        sca_ft = 1.0 # dq * dq # FT scaling factor 
         # ^^    need to clarify the units here
         # calculate transition potential -> h
         h = self.get_tpq(ep, mx, nx, my, ny)
         # calculate inelastic wave function (multiply h in real space)
-        pinel = probe * np.fft.ifft2(h) * sca_ift # ... (missing I sigma ) ...
-        pinelq = np.fft.fft2(pinel) * sca_ft # inelastic wavefunction in q-space
+        pinel = probe * prb.norm_ifft2(h, a) #* sca_ift # ... (missing I sigma ) ...
+        pinelq = prb.norm_fft2(pinel, a) #* sca_ft # inelastic wavefunction in q-space
         # inelastic diffraction pattern
         difpat = pinelq.real**2 + pinelq.imag**2
-        # ... integration over the detector area
-        #sdet = np.dot(difpat.flatten(), l_det.flatten())
-        sdet = np.sum(difpat*l_det)
+        # ... integration over the detector area : sum(abs(psi)^2 * dqx * dqy)
+        sdet = np.sum(difpat*l_det) / np.product(a)
         return sdet * pfac
     
     def get_trstr_tp_ms(self, probe, ep, mx, nx, my, ny):
@@ -936,29 +909,29 @@ class phonon_isc:
 
         '''
         l_det = self.det["grid_fft"]
+        dq = self.qgrid["dq"]
+        a = np.array([1./dq, 1./dq])
         nms = len(ep) # number of scattering events (assume all other input is likewise of that length)
         assert nms > 0, 'This requires list inputs of at least length 1.'
         pfac = 1.0 # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
         sca_ift = 1.0 # dq * dq # iFT scaling factor 
         sca_ft = 1.0 # dq * dq # FT scaling factor 
         # ^^    need to clarify the units here
-        ndim = np.array(probe.shape)
         # calculate transition potential -> h
         h = self.get_tpq(ep[0], mx[0], nx[0], my[0], ny[0])
         # calculate inelastic wave function after first transition (real-space)
-        pinel = probe * np.fft.ifft2(h) * sca_ift # ... (missing I sigma ) ...
+        pinel = probe * prb.norm_ifft2(h, a) * sca_ift # ... (missing I sigma ) ...
         if (nms > 1):
             for ims in range(1, nms):
                 # calculate transition potential -> h
                 h = self.get_tpq(ep[ims], mx[ims], nx[ims], my[ims], ny[ims])
-                pinel = (pinel * np.fft.ifft2(h) * sca_ift) # ... apply next TP in real space
+                pinel = (pinel * prb.norm_ifft2(h, a) * sca_ift) # ... apply next TP in real space
         # calculate inelastic wave function (multiply h in real space)
-        pinelq = np.fft.fft2(pinel) * sca_ft # inelastic wavefunction in q-space
+        pinelq = prb.norm_fft2(pinel, a) * sca_ft # inelastic wavefunction in q-space
         # inelastic diffraction pattern
         difpat = pinelq.real**2 + pinelq.imag**2
-        # ... integration over the detector area
-        #sdet = np.dot(difpat.flatten(), l_det.flatten())
-        sdet = np.sum(difpat*l_det)
+        # ... integration over the detector area : sum(abs(psi)^2 * dqx * dqy)
+        sdet = np.sum(difpat*l_det) / np.product(a)
         return sdet * pfac
 
     def get_mul2d(self, energy_loss_range, single_phonon=False, verbose=0):
@@ -1432,13 +1405,14 @@ class phonon_isc:
                             for nfx1 in range(nix1-dsl, nix1+dsl+1):
                                 if nfx1 < 0: continue
                                 nix2 = nfx1
-                                if (nfy1==niy1) and (nfx1==niy1): continue # skip no change of state
+                                if (nfy1==niy1) and (nfx1==nix1): continue # skip no change of state
                                 for nfy2 in range(niy2-dsl, niy2+dsl+1):
                                     if nfy2 < 0: continue
                                     efy2 = ho.En(nfy2, w) / ec.PHYS_QEL # final y state 2 energy in eV
                                     for nfx2 in range(nix2-dsl, nix2+dsl+1):
                                         if nfx2 < 0: continue
-                                        if (nfy2==niy2) and (nfx2==niy2): continue # skip no change of state
+                                        if (nfy2==niy2) and (nfx2==nix2): continue # skip no change of state
+                                        if (nfy2==niy1) and (nfx2==niy1): continue # skip no change of state compared to the actual inital state -> elastic scattering
                                         efx2 = ho.En(nfx2, w) / ec.PHYS_QEL # final x state 2 energy in eV
                                         ef2 = efy2 + efx2
                                         delE = ef2 - ei1 # energy loss of the probing electron
@@ -1559,14 +1533,14 @@ class phonon_isc:
                                         efy1 = ho.En(nfy1, w1) / ec.PHYS_QEL # final y state 2 energy in eV
                                         for nfx1 in range(nix1-dsl, nix1+dsl+1):
                                             if nfx1 < 0: continue
-                                            if (nfy1==niy1) and (nfx1==niy1): continue # skip no change of state
+                                            if (nfy1==niy1) and (nfx1==nix1): continue # skip no change of state
                                             efx1 = ho.En(nfx1, w1) / ec.PHYS_QEL # final y state 2 energy in eV
                                             for nfy2 in range(niy2-dsl, niy2+dsl+1):
                                                 if nfy2 < 0: continue
                                                 efy2 = ho.En(nfy2, w2) / ec.PHYS_QEL # final y state 2 energy in eV
                                                 for nfx2 in range(nix2-dsl, nix2+dsl+1):
                                                     if nfx2 < 0: continue
-                                                    if (nfy2==niy2) and (nfx2==niy2): continue # skip no change of state
+                                                    if (nfy2==niy2) and (nfx2==nix2): continue # skip no change of state
                                                     efx2 = ho.En(nfx2, w2) / ec.PHYS_QEL # final x state 2 energy in eV
                                                     ef_all = efy1 + efx1 + efy2 + efx2
                                                     delE = ef_all - ei_all # energy loss of the probing electron
