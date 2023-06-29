@@ -117,7 +117,7 @@ def r_box_norm(psi, a):
 
     Parameters
     ----------
-        psi : numpy array, shape=(ny, nx), dytpe=complex
+        psi : numpy array, shape=(ny, nx), dtype=complex
             wave function
         a : numpy array, shape=(2), dtype=float-type
             box size (y,x)
@@ -142,7 +142,7 @@ def q_box_norm(psi, a):
 
     Parameters
     ----------
-        psi : numpy array, shape=(ny, nx), dytpe=complex
+        psi : numpy array, shape=(ny, nx), dtype=complex
             wave function
         a : numpy array, shape=(2), dtype=float-type
             box size (y,x)
@@ -158,9 +158,11 @@ def norm_fft2(psi, a):
     '''
     Norm preserving 2-d FFT
 
+    Can handle stacks of 2d Fourier transforms.
+
     Parameters
     ----------
-        psi : numpy array, shape=(ny, nx), dytpe=complex
+        psi : numpy array, shape=(, ny, nx), dtype=complex
             wave function in real space
         a : numpy array, shape=(2), dtype=float-type
             box size (y,x)
@@ -170,16 +172,18 @@ def norm_fft2(psi, a):
         numpy array, shape=(ny, nx), dytpe=complex
             wave function in Fourier space
     '''
-    nfac = np.product(a) / np.product(np.array(psi.shape))
+    nfac = np.product(a) / np.product(np.array(psi.shape[-2:]))
     return np.fft.fft2(psi) * nfac
 
 def norm_ifft2(psi, a):
     '''
     Norm preserving 2-d inverse FFT
 
+    Can handle stacks of 2d inverse Fourier transforms.
+
     Parameters
     ----------
-        psi : numpy array, shape=(ny, nx), dytpe=complex
+        psi : numpy array, shape=(, ny, nx), dtype=complex
             wave function in Fourier space
         a : numpy array, shape=(2), dtype=float-type
             box size (y,x)
@@ -189,5 +193,5 @@ def norm_ifft2(psi, a):
         numpy array, shape=(ny, nx), dytpe=complex
             wave function in real space
     '''
-    nfac = np.product(np.array(psi.shape)) / np.product(a)
+    nfac = np.product(np.array(psi.shape[-2:])) / np.product(a)
     return np.fft.ifft2(psi) * nfac

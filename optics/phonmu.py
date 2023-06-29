@@ -237,6 +237,8 @@ def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
     points in the detector collection aperture (given by dethash). Vector m is the
     initial state and n is the final state set of oscillator quantum numbers.
 
+    Note: The integration step size (step area) needs to be multiplied still.
+
     Note also that
     <a_n(t)|exp(-2pi I q.t)|a_m(t)> = <a_m(t)|exp(-2pi I q.t)|a_n(t)> for harmonic
     oscillator wave functions a_n(t) and a_m(t), because these functions are real valued.
@@ -263,7 +265,8 @@ def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
         feq: float64[:,:], shape(nextended_y,nextended_x)
             electron scattering factor on the extended grid
         muh: float64[:,:]
-            resulting mu_{h,0} for h frequencies of the original grid
+            resulting mu_{h,0} for h frequencies of the original grid,
+            the integration step size (step area) needs to be multiplied still
 
     Returns
     -------
@@ -287,7 +290,7 @@ def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
         # * given a detector pixel jdet, these indices are frequency + (n>>1)
         # * given an h-grid pixel i, these indices are also the frequency + (n>>1)
         # * now calculate the target frequency h - q, this is simply i - jdet,
-        #   however, this is now a frequency and not an index, so we need to add
+        #   however, this is a frequency and not an index, so we need to add
         #   (n>>1) to get to the target index in the h-grid
         #   j = i - jdet + (n>>1)
         # * apply the offset iqe to get to the index in the extended grid
@@ -298,7 +301,7 @@ def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
         #jqh20 = jq2 - n2 # offset of the hy - qy grid in the extended grid
         #jqh10 = jq1 - n2 # offset of the hx - qx grid in the extended grid
         jqh20 = iqey + n2 - jdet[0] # offset of the hy - qy grid in the extended grid
-        jqh10 = iqex + n2 - jdet[1] # offset of the hy - qy grid in the extended grid
+        jqh10 = iqex + n2 - jdet[1] # offset of the hx - qx grid in the extended grid
         #
         imuh[:,:] = 0.0 # reset loop result
         # run through the h vectors and sum to output
@@ -815,7 +818,7 @@ class phonon_isc:
         n = self.qgrid["n"]
         dq = self.qgrid["dq"]
         l_qi = self.qgrid["l_qi"]
-        pfac = 1.0 # * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
+        pfac = 1.0 * dq * dq # * (ec.PHYS_HPL**2 / (2*np.pi * ec.EL_M0))**2 # constant prefactor (h^2 / (2 pi m_el))^2 dqx dqy
         # ^^    need to clarify the units here
         gex = self.qgrid["extended"]
         l_qex = gex["l_qix"] * dq
