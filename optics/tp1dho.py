@@ -88,6 +88,72 @@ def psi(x, n, us):
     ydf1 = np.sqrt(p2 * nf)
     return yhn * yef / (ydf1 * ydf2)
 
+def probability(x, n, us):
+    """
+
+    1d quantum harmonic oscillator probability distribution
+    psi(x) * psi(x)
+
+    parameters
+    ----------
+
+    x : float
+        space coordinate
+    n : int
+        state quantum number
+    us : float
+        mean squared displacement of the ground state
+        this relates to the oscillator frequency omega and mass m
+        by us = hbar / (2 m omega), hbar = ec.PHYS_HBAR
+
+    returns
+    -------
+    float : psi*psi
+        probability
+
+    """
+    hn = hermite(n)
+    yhn = hn(x / np.sqrt(2 * us))**2
+    yef = np.exp(-x**2 / (2 * us))
+    ydf2 = np.sqrt(np.pi * 2 * us)
+    p2 = np.power(2., n)
+    nf = float(np.math.factorial(n))
+    ydf1 = p2 * nf
+    return yhn * yef / (ydf1 * ydf2)
+
+def get_pdf(n, ngrid):
+    """
+
+    Returns a dictionary defining a pdf of the 1D-QHO
+    for a given quantum number for a grid of
+    length ngrid with probability threshold 1/ngrid.
+
+    The x variable refers to an MSD of 0.5, such that
+    the actual displacement u for an MSD us is obtained
+    by rescaling:
+        u = x * sqrt(2 * us).
+
+    Alternatively, the rescaling can be expressed by
+    oscillator energy E and mass M:
+        u = x * hbar / sqrt(M * E).
+
+    """
+    d = { 'n' : n, 'ngrid' : ngrid, 'us' : 0.5 }
+    xlim = np.sqrt((n+1) * np.log(1.0 * (n+1) * ngrid))
+    xstep = 2 * xlim / (ngrid - 1)
+    xtest = np.arange(-xlim, xlim + 0.5*xstep, xstep)
+    ptest = probability(xtest, n, 0.5)
+    pthr = np.amax(ptest) / ngrid
+    i0 = 0
+    for i in range(0, ngrid):
+        if ptest[i] > pthr: break
+        i0 = i
+    zlim = np.abs(xtest[i0])
+    zstep = 2 * zlim / (ngrid - 1)
+    d['z'] = np.arange(-zlim, zlim + 0.5*zstep, zstep)
+    d['pdf'] = probability(d['z'], n, 0.5)
+    return d
+
 def tsq(q, us, m, n):
     """
 

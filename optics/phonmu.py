@@ -20,6 +20,7 @@ import emilys.optics.tp1dho as ho
 import emilys.optics.waki as sfac
 import emilys.optics.probe as prb
 from emilys.optics.aperture import aperture
+from emilys.numerics.rngdist import rngdist
 
 def pbolz(e, t):
     '''
@@ -352,6 +353,8 @@ class phonon_isc:
             atom data
         l_dE : numpy.ndarray, dtype=float
             energy loss grid used in the last calculation in eV
+        rngdist : dict
+            random number generators for positional configurations
 
     Members
     -------
@@ -395,6 +398,8 @@ class phonon_isc:
         self.pdos = { # phonon density of states
         }
         self.atom = { # atom definition
+        }
+        self.rngdist = { # random number generators for positional configurations
         }
 
     def set_probability_threshold(self, prob_threshold=0.05):
@@ -599,10 +604,10 @@ class phonon_isc:
         self.det["transmission_threshold"] = det_threshold
         self.prepare_detector()
 
-    def set_temperatur(self, T):
+    def set_temperature(self, T):
         '''
 
-        set_temperatur
+        set_temperature
 
         Set the temperature to assume in calculations.
 
@@ -618,6 +623,25 @@ class phonon_isc:
         '''
         self.t = T
         self.tev = self.t * ec.PHYS_KB / ec.PHYS_QEL
+
+    def get_pbol(self, ev):
+        nrm = (np.exp(ev/self.tev) - 1) / np.exp(0.5 * ev / self.tev)
+        nimax = nmaxt(ev, self.t, self.pthr) # get max. initial state quantum number to take into account
+        l_m = np.arange(0, nimax+1, 1, dtype=int) # state quantum number series
+        w = ev / ec.PHYS_HBAREV # oscillator frequency in Hz
+        l_en = ho.En(l_m, w).astype(np.float64) / ec.PHYS_QEL # state energy in eV
+        l_p = nrm * pbolz(l_en, self.t) # Boltzmann distribution probability
+        psum1 = np.sum(l_p) # get sum of probabilities
+        l_p = l_p / psum1 # renormalize to account for cut-off series
+        l_c = l_p * 0.0 # initialize cdf
+        l_c[0] = l_p[0]
+        for i in range(1, len(l_p)):
+            l_c[i] = l_c[i-1] + l_p[i]
+        return {  'phonon_energy' : ev, 'nmax' : nimax, 'frequency' : w
+                , 'energies' : l_en
+                , 'quantum_numbers' : l_m
+                , 'pdf' : l_p 
+                , 'cdf' : l_c}
 
     def set_pdos(self, l_ev, l_pdos, dE, pdos_ip_kind='linear', sub_sample=0.01 ):
         '''
@@ -685,6 +709,92 @@ class phonon_isc:
             "pdos" : y2[1:nep-1],
             "ip_kind" : pdos_ip_kind
         }
+
+    def get_pdos(self):
+        l_p = self.pdos["data"]["pdos"]
+        l_e = self.pdos["data"]["energy"]
+        emax = l_e[-1] + self.pdos["data"]["energy_step"]
+        if l_e[0] > 0.0:
+            l_p = np.concatenate((np.array([0.]), l_p))
+            l_e = np.concatenate((np.array([0.]), l_e))
+        if l_p[-1] > 0.0:
+            l_p = np.concatenate((l_p, np.array([0.])))
+            l_e = np.concatenate((l_e, np.array([emax])))
+        psum = np.sum(l_p)
+        l_p = l_p / psum
+        l_c = l_p * 0.0 # initialize cdf
+        l_c[0] = l_p[0]
+        for i in range(1, len(l_p)):
+            l_c[i] = l_c[i-1] + l_p[i]
+        return {
+            "energy_step" : self.pdos["data"]["energy_step"],
+            "energy" : l_e,
+            "pdf" : l_p,
+            "cdf" : l_c
+        }
+    
+    def prepare_displ_mc(self):
+        '''
+
+        prepare_displ_mc
+
+        Prepares random number generators for a displacement
+        Monte-Carlo based on PDOS, Boltzmann and positional
+        distribution functions. The result and functional
+        objects are stored in the dictionary rngdist.
+
+        Depends on the current setup of PDOS (set_pdos),
+        temperature (set_temperature), and atom (set_atom).
+
+        Prepares several instances of emilys.numerics.rngdist
+        objects which will be used in a sequence to calculate
+        random variates of atomic displacements.
+        
+        '''
+        rd = self.rngdist
+        # Store current PDOS info as distribution.
+        # This is done because the rng works with an energy range
+        # starting from E = 0, while the original PDOS in self.pdos
+        # starts from E > 0.
+        rd["pdos"] = { "dist" : self.get_pdos() }
+        d_pdos = rd["pdos"]["dist"]
+        # Init a discrete rng for the PDOS.
+        rd["pdos"]["rng"] = rngdist(d_pdos["energy"], d_pdos["pdf"])
+        # store displacement scales for all phonon energies
+        sca_u = d_pdos["energy"] * 0.0
+        for i in range(0, len(d_pdos["energy"])):
+            ep = d_pdos["energy"][i]
+            if ep > 0:
+                ma = self.atom["mass"] * ec.PHYS_MASSU
+                sca_u[i] = 1.0E10 * ec.PHYS_HBAR / np.sqrt(ma * ep * ec.PHYS_QEL)
+        rd["pdos"]["displacement_scale"] = sca_u
+        #
+        # Init discrete rngs for the initial states per phonon energy.
+        # Use rngdist.rand_elem() to dice an energy index iep
+        # in the list d_pdos["energy"].
+        rd["pbol"] = {}
+        nmax = 0
+        for iep in range(0, len(d_pdos["energy"])): # loop over phonon energies
+            s_iep = str(iep)
+            ep = d_pdos["energy"][iep]
+            if ep < 0.0001: continue # skip low phonon energies, Warning: This is a hard lower limit.
+            rd["pbol"][s_iep] = { "energy" : ep, "dist" : self.get_pbol(ep) }
+            db = rd["pbol"][s_iep]
+            # Init a discrete rng for the Boltzmann distribution.
+            db["rng"] = rngdist(db["dist"]["quantum_numbers"], db["dist"]["pdf"])
+            # update the maximum quantum number to take into account
+            nmax = max(nmax, db["dist"]["nmax"])
+        #
+        # Init continuous rngs for displacements per quantum number
+        # of 1d harmonic oscillator states
+        rd["displ"] = { "nmax" : nmax, "ngrid" : 1000 }
+        for ni in range(0, nmax+1):
+            s_ni = str(ni)
+            rd["displ"][s_ni] = {}
+            dd = rd["displ"][s_ni]
+            dd["dist"] = ho.get_pdf(ni, rd["displ"]["ngrid"])
+            dd["rng"] = rngdist(dd["dist"]["z"], dd["dist"]["pdf"], num_icdf=dd["dist"]["ngrid"] * 10)
+        
 
     def prepare_qgrid_ext(self):
         '''
@@ -1618,3 +1728,60 @@ class phonon_isc:
             "data_dmuls" : a_eels_dmuls,
             "l_dE" : l_dE
         }
+    
+    def get_displ(self, num=1):
+        """
+
+        Returns an array of random displacements for the current
+        setup. Requires a previous call to prepare_displ_mc().
+        
+        """
+        assert "displ" in self.rngdist, 'no rng setup'
+        displ = np.zeros(num, dtype=np.float64)
+        l_iep = self.rngdist["pdos"]["rng"].rand_elem(num)
+        for i in range(0, num):
+            iep = l_iep[i]
+            s_iep = str(iep)
+            sca = self.rngdist["pdos"]["displacement_scale"][iep]
+            ni = self.rngdist["pbol"][s_iep]["rng"].rand_discrete()[0]
+            s_ni = str(ni)
+            displ[i] = sca * self.rngdist["displ"][s_ni]["rng"].rand_continuum()[0]
+        return displ
+    
+    def get_displ_einstein(self, ev, t, num=1):
+        """
+
+        Returns an array of random displacements for the current
+        setup assuming an Einstein model with phonon energy ev
+        and temperature t.
+
+        Requires a previous setup of atom data (set_atom).
+        
+        """
+        assert ev > 0.0, "Expecting positive energy input in eV."
+        assert t >= 0.0, "Expecting non-negative temperature in K."
+        ma = self.atom["mass"] * ec.PHYS_MASSU
+        sca = 1.0E10 * ec.PHYS_HBAR / np.sqrt(ma * ev * ec.PHYS_QEL)
+        tev = t * ec.PHYS_KB / ec.PHYS_QEL # thermal energy in eV
+        displ = np.zeros(num, dtype=np.float64)
+        #
+        # setup rngs for the initial states from the Boltzmann distribution
+        t_bk = self.t
+        self.set_temperature(t)
+        dn = self.get_pbol(ev)
+        nmax = dn["nmax"]
+        rng_ni = rngdist(dn["quantum_numbers"], dn["pdf"]) # setup initial state rng
+        d_displ = {}
+        ngrid = 1000
+        for ni in range(0, nmax+1): # setup displacement rngs for all initial states
+            s_ni = str(ni)
+            d_displ[s_ni] = {}
+            dd = d_displ[s_ni]
+            dd["dist"] = ho.get_pdf(ni, ngrid)
+            dd["rng"] = rngdist(dd["dist"]["z"], dd["dist"]["pdf"], num_icdf=dd["dist"]["ngrid"] * 10)
+        for i in range(0, num):
+            ni = rng_ni.rand_discrete()[0]
+            s_ni = str(ni)
+            displ[i] = sca * d_displ[s_ni]["rng"].rand_continuum()[0]
+        self.set_temperature(t_bk)
+        return displ
