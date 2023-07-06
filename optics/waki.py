@@ -14,6 +14,25 @@ published under the GNU General Publishing License, version 3
 #from emilys.structure.atomtype import atom_type_symbol
 import emilys.optics.econst as ec
 import numpy as np
+from numba import njit, float64, int64
+from scipy.interpolate import interp1d
+
+
+@njit(float64(float64[:,:], float64[:], float64[:], int64, int64), parallel=True)
+def numint2d(y, x1, x2, n1, n2):
+    s = 0.0
+    # integrate by trapezoidal summation
+    sx2 = np.zeros(n2, dtype=np.float64)
+    # inner integral over x1 / fast memory sequence
+    for i2 in range(0, n2):
+        for i1 in range(0, n1-1):
+            sx2[i2] += (y[i2,i1+1]+y[i2,i1])*(x1[i1+1]-x1[i1])
+    sx2 = sx2 * 0.5 # half-sum (trapez)
+    # outer integral over x2
+    for i2 in range(0, n2-1):
+        s += (sx2[i2+1]+sx2[i2])*(x2[i2+1]-x2[i2])
+    return s * 0.5 #  half-sum (trapez)
+
 
 class waki:
     def __init__(self):
@@ -21,6 +40,8 @@ class waki:
         self.prm_num = 14 # number of parameters in the table + 1
         self.iyr = 0.02 # inverse Yukawa range for the ionic charge potential in 1/A for s = q/2
         self.s2_min = 0.001 # small s**2 approximation limit
+        self.d_dwf = {} # empty dwf dict preset
+        self.d_mug = {} # empty mug dict preset
         self.ts = np.array([0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00, 1.20, 1.40, 1.60, 1.80, 2.00, 2.50, 3.00, 3.50, 4.00, 5.00, 6.00])
         self.tprm = np.zeros((self.atty_max+1, self.prm_num+1),dtype=float)
         # 0 -> vacancy z = 0 -> b's won't matter, all a's set to zero
@@ -193,4 +214,149 @@ class waki:
                 # apply Mott formula to fx to get fe
                 return c1 * (a[13] - fx) / s2
             
+    def register_dwf(self, s, dwf, ip_kind='linear'):
+        """
+
+        function register_dwf
+        ---------------------
+
+        Registers data to interpolate Debye-Waller factors as
+        a function of scattering vector s = q/2.
+
+        Note: Best provide an array s covering positive and
+        negative values even when not needing negative values,
+        in order to allow a good interpolation for values close
+        to zero.
+
+        Parameters
+        ----------
+        s : array-like: type = float
+            scattering vector grid in 1/A, s = q/2
+        dwf : array-like: type = float
+            strength of the Debye-Waller factor for each s
+        ip_kind : str, default: 'linear'
+            interpolation kind, see documentation of scipy.interpolate.interp1d
+
+        Returns
+        -------
+        None
+
+        """
+        assert len(s) == len(dwf), "Expecting equal length of input arrays s and dwf."
+        self.d_dwf["data"] = {
+                "s" : np.array(s).astype(np.float64),
+                "dwf" : np.array(dwf).astype(np.float64)
+            }
+        self.d_dwf["func"] = interp1d(s, dwf, kind=ip_kind, copy=True, bounds_error=False, fill_value=0.0)
+
+    def get_dwf(self, s):
+        """
+
+        function get_dwf
+        ----------------
+
+            Returns a value of the Debye-Waller factors based on
+            interpolation from pre-registered data.
+
+            Call register_dwf before using this function.
+
+        Parameters
+        ----------
+            s : float
+                scattering vector in 1/A, s = q/2
+
+        Returns
+        -------
+            float
+                Debye-Waller factor DWF(s)
+
+        """
+        assert "func" in self.d_dwf, 'Call member function register_dwf before using get_dwf.'
+        return self.d_dwf["func"](s)
+    
+    def get_mug(self, theta, phi):
+        ct = np.cos(theta)
+        st = np.sin(theta)
+        cp = np.cos(phi)
+        k = self.d_mug["integral"]["k"]
+        twok = k+k
+        q = k * np.sqrt( 2.0 - 2.0 * ct )
+        g = self.d_mug["integral"]["g"]
+        qg = np.sqrt( g*g + twok*k - twok*(k*ct + g*cp*st) )
+        sg = 0.5 * g # g/2
+        sq = 0.5 * q # q/2
+        sqg = 0.5 * qg # qg/2
+        Z = self.d_mug["integral"]["Z"]
+        fq = self.get_fe(Z, sq)
+        fqg = self.get_fe(Z, sqg)
+        dwfg = self.get_dwf(sg)
+        dwfq = self.get_dwf(sq)
+        dwfqg = self.get_dwf(sqg)
+        return fq*fqg * (dwfg - dwfq*dwfqg) * st
+    
+    def get_fabs(self, Z, s, ekev, num_int=128):
+        """
+
+        function get_fabs
+        -----------------
+
+        Calculates an absorptive form factor.
+
+        Call register_dwf before using this function.
+
+        Parameters
+        ----------
+        Z : int
+            atomic number to identify the electron scattering factor
+        s : float
+            scattering vector length in 1/A, s = q/2
+        ekev : float
+            electron energy in keV
+        num_int : int, default: 128
+            number of samples for the numerical integration
+
+        Returns
+        -------
+        np.float64
+            absorptive form factor for s = q/2
+
+        """
+        fa = 0.0
+        kpre = 0.506773075855 # 2*pi * e / (h*c) *10^-7 [1/(A * kV)]
+        k0 = kpre * np.sqrt((2 * ec.EL_E0KEV + ekev) * ekev) # scaled wave number in 1/A, effectively = 2 pi k0
+        # fortran code: fa  = rc * rc * wakiabs(0.1*g, dwa, a2, k0/twopi) * k0
+        g = 2 * s
+        a = self.get_prm(Z)
+        a1 = 0.0
+        b1 = np.pi
+        a2 = 0.0
+        b2 = np.pi
+        n1 = num_int # theta samples
+        p1 = 2.0 # stepping power for theta
+        n2 = (num_int >> 1) # phi samples
+        p2 = 1.0 # stepping power for phi
+        self.d_mug["integral"] = {
+            "ekev" : ekev,
+            "k" : k0,
+            "g" : g,
+            "s" : s,
+            "Z" : Z,
+            "a" : a,
+        }
+        cx1 = 1.0 / (n1-1)
+        tx1 = a1 + (b1-a1) * (np.arange(0, n1) * cx1)**p1
+        cx2 = 1.0 / (n2-1)
+        tx2 = a2 + (b2-a2) * (np.arange(0, n2) * cx2)**p2
+
+        ymug = np.zeros((n2,n1), dtype=np.float64)
+
+        for i2 in range(0, n2):
+            phi = tx2[i2]
+            for i1 in range(0, n1):
+                theta = tx1[i1]
+                ymug[i2,i1] = self.get_mug(theta, phi)
+
+        fa = 2.0 * numint2d(ymug, tx1, tx2, n1, n2)
+
+        return fa
             
