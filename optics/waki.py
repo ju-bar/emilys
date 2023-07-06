@@ -356,7 +356,9 @@ class waki:
                 theta = tx1[i1]
                 ymug[i2,i1] = self.get_mug(theta, phi)
 
-        fa = 2.0 * numint2d(ymug, tx1, tx2, n1, n2)
+        fa = 2.0 * numint2d(ymug, tx1, tx2, n1, n2) * k0 / (4 * np.pi)
+
+        # towards a cross-section, this needs scaling with lambda^2 gamma^2
 
         return fa
             
