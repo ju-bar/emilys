@@ -1729,23 +1729,48 @@ class phonon_isc:
             "l_dE" : l_dE
         }
     
-    def get_displ(self, num=1):
+    def get_displ(self, num=1, num_enrg=1, verbose=0):
         """
+
+        get_displ
+        ---------
 
         Returns an array of random displacements for the current
         setup. Requires a previous call to prepare_displ_mc().
+
+        parameters
+        ----------
+
+        num : int, default: 1
+            number of random displacements to generate
+        num_enrg : int, default: 1
+            number of consecutive displacements generated with
+            the same phonon energy
+        verbose : int, default: 0
+            switch for text output
+
+        returns
+        -------
+
+        numpy array, dtype=numpy.float64, shape=(num)
+            an array of num random displacements
         
         """
         assert "displ" in self.rngdist, 'no rng setup'
-        displ = np.zeros(num, dtype=np.float64)
-        l_iep = self.rngdist["pdos"]["rng"].rand_elem(num)
-        for i in range(0, num):
-            iep = l_iep[i]
-            s_iep = str(iep)
-            sca = self.rngdist["pdos"]["displacement_scale"][iep]
-            ni = self.rngdist["pbol"][s_iep]["rng"].rand_discrete()[0]
-            s_ni = str(ni)
-            displ[i] = sca * self.rngdist["displ"][s_ni]["rng"].rand_continuum()[0]
+        displ = np.zeros(num, dtype=np.float64) # init displacement array
+        l_iep = self.rngdist["pdos"]["rng"].rand_elem(num) # get random phonon energy indices
+        j = -1
+        for i in range(0, num): # loop displacement draws
+            if (i % num_enrg) == 0: # need a new phonon energy?
+                j += 1 # advance in phonon energy list on every num_enrg-th pass
+            iep = l_iep[j] # phonon energy index
+            s_iep = str(iep) # ... as str to access the correct Boltzmann distribution
+            sca = self.rngdist["pdos"]["displacement_scale"][iep] # scaling factor
+            ni = self.rngdist["pbol"][s_iep]["rng"].rand_discrete()[0] # random initial state quantum number
+            s_ni = str(ni) # ... as str to access the correct spatial distribution
+            displ[i] = sca * self.rngdist["displ"][s_ni]["rng"].rand_continuum()[0] # get displacement
+            if verbose > 1:
+                print("(get_displ): iep = " + s_iep + ", ni = " + s_ni + ": u = {:.3e}".format(displ[i]))
         return displ
     
     def get_displ_einstein(self, ev, t, num=1):
