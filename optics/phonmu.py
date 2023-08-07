@@ -642,7 +642,7 @@ class phonon_isc:
                 , 'quantum_numbers' : l_m
                 , 'pdf' : l_p 
                 , 'cdf' : l_c}
-
+    
     def set_pdos(self, l_ev, l_pdos, dE, pdos_ip_kind='linear', sub_sample=0.01 ):
         '''
 
@@ -733,6 +733,42 @@ class phonon_isc:
             "cdf" : l_c
         }
     
+    def prepare_displ_mct(self):
+        '''
+
+        prepare_displ_mct
+
+        Prepares random number generators for a displacement
+        Monte-Carlo based on the PDOS at a given temperature.
+        The result and functional objects are stored in the
+        dictionary rngdist.
+
+        This is a reduced version of prepare_displ_mc, which
+        can be used with get_displt, achieving the same result
+        as prepare_displ_mc with get_displ.
+        prepare_displ_mc and get_displ may be deprecated at some
+        point.
+
+        Depends on the current setup of PDOS (set_pdos),
+        temperature (set_temperature), and atom (set_atom).
+
+        Prepares several instances of emilys.numerics.rngdist
+        objects which will be used in a sequence to calculate
+        random variates of atomic displacements.
+        
+        '''
+        rd = self.rngdist
+        # Store current PDOS info as distribution.
+        # This is done because the rng works with an energy range
+        # starting from E = 0, while the original PDOS in self.pdos
+        # starts from E > 0.
+        rd["pdos"] = { "dist" : self.get_pdos() }
+        d_pdos = rd["pdos"]["dist"]
+        # Init a discrete rng for the PDOS.
+        # Use this to draw the phonon energy.
+        rd["pdos"]["rng"] = rngdist(d_pdos["energy"], d_pdos["pdf"])
+        
+    
     def prepare_displ_mc(self):
         '''
 
@@ -760,7 +796,10 @@ class phonon_isc:
         d_pdos = rd["pdos"]["dist"]
         # Init a discrete rng for the PDOS.
         rd["pdos"]["rng"] = rngdist(d_pdos["energy"], d_pdos["pdf"])
+        #
         # store displacement scales for all phonon energies
+        # this is needed to rescale the oscillator state displacement rng
+        # which is working on a reference MSD of 1
         sca_u = d_pdos["energy"] * 0.0
         for i in range(0, len(d_pdos["energy"])):
             ep = d_pdos["energy"][i]
@@ -1728,6 +1767,55 @@ class phonon_isc:
             "data_dmuls" : a_eels_dmuls,
             "l_dE" : l_dE
         }
+    
+    def get_displt(self, num=1, num_enrg=1, verbose=0):
+        """
+
+        get_displt
+        ---------
+
+        Returns an array of random displacements for the current
+        setup.
+         
+        Requires a previous call to prepare_displ_mct().
+
+        Depends on the current setup of PDOS (set_pdos),
+        temperature (set_temperature), and atom (set_atom).
+
+        parameters
+        ----------
+
+        num : int, default: 1
+            number of random displacements to generate
+        num_enrg : int, default: 1
+            number of consecutive displacements generated with
+            the same phonon energy
+        verbose : int, default: 0
+            switch for text output
+
+        returns
+        -------
+
+        numpy array, dtype=numpy.float64, shape=(num)
+            an array of num random displacements in A
+        
+        """
+        assert "pdos" in self.rngdist, 'no pdos setup'
+        m = ec.PHYS_MASSU * self.atom["mass"] # atom mass in kg
+        displ = np.zeros(num, dtype=np.float64) # init displacement array
+        l_ev = self.rngdist["pdos"]["dist"]["energy"] # init energy list [eV]
+        l_iep = self.rngdist["pdos"]["rng"].rand_elem(num) # get random phonon energy indices
+        j = -1
+        for i in range(0, num): # loop displacement draws
+            if (i % num_enrg) == 0: # need a new phonon energy?
+                j += 1 # advance in phonon energy list on every num_enrg-th pass
+            iep = l_iep[j] # phonon energy index
+            w = l_ev[iep] / ec.PHYS_HBAREV # phonon frequency
+            usca = np.sqrt(ho.usqrt(m, w, self.t)) * 1.0E10 # rmsd in A
+            displ[i] = usca * np.random.normal() # get displacement in A
+            if verbose > 1:
+                print("(get_displ): E = {:.4f} eV, u = {:.3e} A".format(l_ev[iep], displ[i]))
+        return displ
     
     def get_displ(self, num=1, num_enrg=1, verbose=0):
         """

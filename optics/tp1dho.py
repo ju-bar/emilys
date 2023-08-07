@@ -19,6 +19,7 @@ def usqr0(m, w):
 
     Calculates the mean squared displacement of the 1d QHO
     ground state from mass m and frequency w.
+    
     usqr0 = hbar / (2 m w)
 
     parameters
@@ -37,6 +38,39 @@ def usqr0(m, w):
 
     """
     return ec.PHYS_HBAR / (2. * m * w)
+
+def usqrt(m, w, t):
+    """
+
+    Calculates the mean squared displacement of the 1d QHO
+    at temperature t from mass m and frequency w.
+    
+    usqr0 = hbar / (2 m w)
+    usqrt = usqr0 * coth( hbar w / (2 kB T))
+
+    parameters
+    ----------
+
+        m : float
+            mass in kg
+        w : float
+            oscillator frequency f/2pi in 1/s
+        t : float
+            temperature in k
+        
+    returns
+    -------
+
+        float
+            mean squared displacement in m^2
+    
+    """
+    assert t > 0.0, 'requires temperature t > 0'
+    assert w > 0.0, 'requires frequency w > 0'
+    assert m > 0.0, 'requires mass m > 0'
+    ein = ec.PHYS_HBAR * w # einstein model energy [J]
+    et = ec.PHYS_KB * t # thermal energy [J]
+    return usqr0(m, w) / np.tanh(0.5 * ein / et)
 
 def En(n, w):
     return (n + 0.5) * ec.PHYS_HBAR * w
