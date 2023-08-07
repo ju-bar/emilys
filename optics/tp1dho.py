@@ -65,9 +65,6 @@ def usqrt(m, w, t):
             mean squared displacement in m^2
     
     """
-    assert t > 0.0, 'requires temperature t > 0'
-    assert w > 0.0, 'requires frequency w > 0'
-    assert m > 0.0, 'requires mass m > 0'
     ein = ec.PHYS_HBAR * w # einstein model energy [J]
     et = ec.PHYS_KB * t # thermal energy [J]
     return usqr0(m, w) / np.tanh(0.5 * ein / et)

@@ -69,7 +69,7 @@ class supercell:
             Returns a dictionary listing atomic types and sites assigned
             to these types for all atoms indexed in list l_atoms_idx.
 
-        add_atom(Z, uiso, pos, occ, charge):
+        add_atom(Z, uiso, pos, occ, charge, faniso):
             Adds an atom to the structure with given parameters.
 
         keep_atoms(l_atoms_idx):
@@ -90,6 +90,10 @@ class supercell:
             Sets the uiso parameter of all atoms indexed by list
             l_atoms_idx by translating the given biso value.
             uiso = biso / (8 Pi**2)
+
+        set_faniso(l_atoms_idx, faniso):
+            Sets the faniso parameter of all atoms indexed by list
+            l_atoms_idx to the given value.
 
         set_occ(l_atoms_idx, occ):
             Sets the occupancy parameter of all atoms indexed by list
@@ -252,6 +256,44 @@ class supercell:
             self.shift_all_atoms(f_shift) # shift without enforcing periodic boundary conditions
         return self.a0 # return new box size
         
+    def tile(self, num_tile):
+        """
+
+        Adds copies of the cell num_tile times along the respective
+        dimensions.
+
+        Parameters
+        ----------
+
+            num_tile : numpy.ndarray([nx, ny, nz], dtype=int)
+                Multipliers to tile the cell along each dimension.
+
+        Returns
+        -------
+
+            numpy.ndarray([x, y, z], dtype=float) : new size of the box
+
+        """
+        ati = np.array(num_tile, dtype=float)
+        ffac = np.reciprocal(ati)
+        l_at_new = []
+        n = len(self.l_atoms)
+        for i in range(0, n):
+            Z = self.l_atoms[i].Z
+            pos0 = self.l_atoms[i].pos
+            uiso = self.l_atoms[i].uiso
+            occ = self.l_atoms[i].occ
+            charge = self.l_atoms[i].charge
+            faniso = self.l_atoms[i].faniso
+            for iz in range(0, num_tile[2]):
+                for iy in range(0, num_tile[1]):
+                    for ix in range(0, num_tile[0]):
+                        cshift = np.array([ix, iy, iz], dtype=float)
+                        pos = ffac * (pos0 + cshift)
+                        l_at_new.append(atom(Z=Z, pos=pos, uiso=uiso, occ=occ, charge=charge, faniso=faniso))
+        self.a0 = self.a0 * ati
+        self.l_atoms = l_at_new
+        return self.a0 # return new box size
 
     def get_avg_pos(self, l_atoms_idx, proximity, periodic):
         pos = np.array([0.,0.])
@@ -323,7 +365,7 @@ class supercell:
                         d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge, 'sites' : [a.pos] }
         return d
 
-    def add_atom(self, Z, uiso, pos, occ = 1.0, charge = 0.0):
+    def add_atom(self, Z, uiso, pos, occ = 1.0, charge = 0.0, faniso = np.array([0.,0.,0.])):
         """
 
         Adds an atom to the structure with given parameters.
@@ -340,13 +382,15 @@ class supercell:
                 fractional site occupation
             charge : float, default 0.0
                 ionic charge in units of the elementary charge
+            faniso : numpy.ndarray([f1, f2, angle], dtype=float)
+                relative anisotropy parameters
         
         Returns
         -------
             int
                 The index at which the atom was added to the list member l_atoms.
         """
-        ato = atom(Z, pos, uiso, occ, charge)
+        ato = atom(Z, pos, uiso, occ, charge, faniso)
         self.l_atoms.append(ato)
         return len(self.l_atoms)
 
@@ -507,6 +551,41 @@ class supercell:
         """
         uiso = biso / (8. * np.pi**2) # from biso to uiso
         return self.set_uiso(l_atoms_idx, uiso)
+    
+    def set_faniso(self, l_atoms_idx, faniso):
+        """
+
+        Sets the relatice anisotropy parameters of all atoms indexed by list
+            l_atoms_idx to the given value.
+
+        Parameters
+        ----------
+
+            l_atoms_idx : list
+                List of indices identifying atoms in member l_atoms
+                for which the faniso parameter is set.
+
+            faniso : np.array, shape(3,), dtype=float
+                Relative anisotropy parameters [f1, f2, angle].
+
+        Returns
+        -------
+            
+            int
+                Number of atoms for which the faniso value was set.
+
+        """
+        assert isinstance(l_atoms_idx, list), 'This expects that parameter l_atoms_idx is a list of integers'
+        m = len(self.l_atoms) # current number of atoms
+        if m == 0: return len(self.l_atoms) # nothing to delete
+        n = len(l_atoms_idx) # number of atoms to delete
+        l = 0
+        if n > 0: # work through the list
+            for i in l_atoms_idx: # copy only valid indices 
+                if (i >= 0) and (i < m):
+                    self.l_atoms[i].faniso = faniso
+                    l += 1
+        return l
 
     def set_occ(self, l_atoms_idx, occ):
         """

@@ -65,9 +65,12 @@ def get_atom_str_CEL(a):
     symb = aty.atom_type_symbol[a.Z]
     biso = 8. * np.pi**2 * a.uiso * 0.01 # biso in nm^2
     scrg = ato.get_str_from_charge(a.charge)
-    s_out = ' {:s} {:>10.6f} {:>10.6f} {:>10.6f} {:>10.6f} {:>10.6f}'.format(
+    s_1 = ' {:s} {:>10.6f} {:>10.6f} {:>10.6f} {:>10.6f} {:>10.6f}'.format(
             symb + scrg, a.pos[0], a.pos[1], a.pos[2], a.occ, biso)
-    return s_out + '  0.000000  0.000000  0.000000'
+    s_2 = ' {:>10.6f} {:>10.6f} {:>10.6f}'.format(
+            a.faniso[0], a.faniso[1], a.faniso[2])
+    s_out = s_1 + s_2
+    return s_out
 
 def set_atom_str_CEL(s):
     """
@@ -93,7 +96,10 @@ def set_atom_str_CEL(s):
     in_pos = np.array([float(l_cmp[1]), float(l_cmp[2]), float(l_cmp[3])])
     in_occ = float(l_cmp[4])
     in_uiso = float(l_cmp[5]) * 100. / (8. * np.pi**2) #  usio in Angst^2
-    return ato.atom(Z=in_Z, pos = in_pos, uiso=in_uiso, occ=in_occ, charge=in_charge)
+    in_faniso = np.array([0.,0.,0.])
+    if len(l_cmp > 8):
+        in_faniso = np.array([float(l_cmp[6]), float(l_cmp[7]), float(l_cmp[8])])
+    return ato.atom(Z=in_Z, pos = in_pos, uiso=in_uiso, occ=in_occ, charge=in_charge, faniso=in_faniso)
 
 def read_CEL(file, debug=False):
     """

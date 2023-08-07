@@ -84,12 +84,13 @@ class atom:
 
     """
 
-    def __init__(self, Z=1, pos=np.array([0.,0.,0.]), uiso=0.006332574, occ=1., charge=0.):
+    def __init__(self, Z=1, pos=np.array([0.,0.,0.]), uiso=0.006332574, occ=1., charge=0., faniso=np.array([0.,0.,0.])):
         self.Z = Z
         self.pos = pos
         self.uiso = uiso
         self.occ = occ
         self.charge = charge
+        self.faniso = faniso
 
     def get_type_name(self, l_type_name_adds = []):
         """
