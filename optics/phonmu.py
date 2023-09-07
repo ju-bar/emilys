@@ -21,6 +21,7 @@ import emilys.optics.waki as sfac
 import emilys.optics.probe as prb
 from emilys.optics.aperture import aperture
 from emilys.numerics.rngdist import rngdist
+from emilys.structure.atomtype import Z_from_str
 
 def pbolz(e, t):
     '''
@@ -71,6 +72,29 @@ def nmaxt(e, t, pthr):
     pt = pthr * p0
     n = 1 - int(0.5 + ec.PHYS_KB*t * np.log(pt) / (e*ec.PHYS_QEL))
     return n
+
+@jit(float64(float64, float64, float64, float64), nopython=True)
+def gauss_peak(x, amp, pos, sig):
+    dx2 = (x-pos)**2
+    ts2 = 2 * sig**2
+    return amp * np.exp(-dx2 / ts2) / np.sqrt( np.pi * ts2)
+
+# define spectrum function with system energy resolution
+def get_spec_conv(l_e, l_y, E0, E1, dE, Eres):
+    n1 = len(l_e)
+    e_sig = Eres / np.sqrt(8. * np.log(2.0))
+    l_es = np.arange(E0, E1 + 0.5*dE, dE)
+    n2 = len(l_es)
+    l_ys = np.zeros(n2, dtype=l_y.dtype)
+    ys = gauss_peak(0.,1.,0.,1.) # compile peak function
+    for i in range(0, n1):
+        delta_e = 0.
+        if i > 0: delta_e += (l_e[i] - l_e[i-1])*0.5
+        if i < n1-1: delta_e += (l_e[i+1] - l_e[i])*0.5
+        for j in range(0, n2):
+            ys = gauss_peak(l_es[j], l_y[i]*delta_e, l_e[i], e_sig)
+            l_ys[j] += ys
+    return l_es, l_ys
 
 @jit(float64(float64, float64[:], float64[:]), nopython=True)
 def get_fe(q, q0, f0):
@@ -224,6 +248,7 @@ def resample_pdos(l_ev, l_pdos, dE, pdos_ip_kind='linear'):
     return s1, e2, p2n
 
 
+
 @jit(int64(int64[:], int64, int64, int64[:,:], float64[:], complex128[:], complex128[:], float64[:,:], float64[:,:]), nopython=True, parallel=True)
 def numint_muh(l_qi, iqex, iqey, dethash, detval, tmx, tmy, feq, muh):
     '''
@@ -363,6 +388,9 @@ class phonon_isc:
         set_detector : Set detector data and prepare related functions
         set_temperatur : Set the temperature to assume in calculations
         set_pdos : Set a phonon density of states (PDOS)
+        get_utsqr : Returns the mean squared displacement for the current atom and PDOS at a temperature
+        get_utsqr_ho : Returns the mean squared displacement for the current atom at a temperature and an Einstein energy
+        get_sdf : Returns a spectral distribution function for an atom, the PDOS and a temperature
 
     Usage
     -----
@@ -398,6 +426,9 @@ class phonon_isc:
         self.pdos = { # phonon density of states
         }
         self.atom = { # atom definition
+            "Z" : 0,
+            "symbol" : "",
+            "mass" : 0.0
         }
         self.rngdist = { # random number generators for positional configurations
         }
@@ -682,7 +713,7 @@ class phonon_isc:
 
         '''
         assert len(l_ev) == len(l_pdos), "Expecting equal length of lists l_ev and l_pdos."
-        assert dE > 0.001, "Expecting non-negative energy step size dE."
+        assert dE > 0.00001, "Expecting non-negative energy step size dE."
         # backup input pdos
         self.pdos["original"] = {
             "energy" : l_ev,
@@ -692,6 +723,13 @@ class phonon_isc:
         dEfine = sub_sample * dE
         s1, x1, y1 = resample_pdos(l_ev, l_pdos, dEfine, pdos_ip_kind=pdos_ip_kind)
         self.pdos["original"]["norm"] = s1
+        # store probability density on the fine sampling
+        self.pdos["resampled"] = {
+            "energy_step" : dEfine,
+            "ip_kind" : pdos_ip_kind,
+            "energy" : x1,
+            "pdos" : y1
+        }
         # prepare bins of 
         x2 = np.arange(0., np.amax(l_ev)+dE, dE) # target phonon energy bins
         y2 = x2 * 0.0 # integrated pdos
@@ -702,12 +740,14 @@ class phonon_isc:
             ii = [int(ei[0] / dEfine), int(ei[1] / dEfine)] # reference pixels on fine grid
             si = np.trapz(y1[ii[0]:ii[1]+1],x=x1[ii[0]:ii[1]+1])
             y2[i] = si
-        # store pdos data
+        #
+        # store integrated pdos data (these are probabilities, not probability densities)
         self.pdos["data"] = {
             "energy_step" : dE,
             "energy" : x2[1:nep-1],
             "pdos" : y2[1:nep-1],
-            "ip_kind" : pdos_ip_kind
+            "ip_kind" : pdos_ip_kind,
+            "norm" : self.pdos["original"]["norm"]
         }
 
     def get_pdos(self):
@@ -730,9 +770,168 @@ class phonon_isc:
             "energy_step" : self.pdos["data"]["energy_step"],
             "energy" : l_e,
             "pdf" : l_p,
-            "cdf" : l_c
+            "cdf" : l_c,
+            "norm" : self.pdos["data"]["norm"]
         }
     
+    def get_pdos_pdf(self, dEp):
+        pdos = self.pdos["resampled"]
+        l_p = pdos["pdos"]
+        l_e = pdos["energy"]
+        Ep_max = np.amax(l_e)
+        pdos_ip1 = interpolate.interp1d(l_e, l_p, kind=pdos['ip_kind'],copy=True,bounds_error=False,fill_value=0.0)
+        #
+        l_e1 = np.arange(dEp, Ep_max + dEp/2, dEp)
+        l_p1 = np.abs(pdos_ip1(l_e1)) # interpolated PDOS values
+        p1tot = np.trapz(l_p1, x=l_e1) # total (integrated on the grid)
+        l_pn = l_p1 / p1tot # normalized PDOS on the fine grid [meV^{-1]]
+        return {
+            "energy_step" : dEp,
+            "energy" : l_e1,
+            "pdf" : l_pn,
+            "norm" : self.pdos["data"]["norm"]
+        }
+
+    def write_pdos_file(self, sfile, dEp, symbol="", temperature=-1.0):
+        if len(sfile) == 0: return 1
+        if dEp <= 0.0: return 2
+        # atom data
+        symb = symbol
+        if len(symb) == 0: symb = self.atom["symbol"]
+        ma = self.atom["mass"]
+        # temperature
+        temp = temperature
+        if temp < 0.0: temp = self.t
+        # PDOS
+        pdos = self.get_pdos_pdf(dEp)
+        l_p = pdos["pdf"]
+        l_e = pdos["energy"]
+        n = len(l_e)
+        i0 = 0
+        i1 = n-1
+        for i in range(0, n):
+            if l_p[i] > 0.0:
+                i0 = i
+                break
+        for i in range(n-1, -1, -1):
+            if l_p[i] > 0.0:
+                i1 = i
+                break
+        #
+        with open(sfile, 'w') as f:
+            f.write('PDOS\n')
+            f.write(symb + '\n')
+            f.write('{:.5f}\n'.format(ma))
+            f.write('{:.1f}\n'.format(temp))
+            f.write('{:d}\n'.format(1 + i1 - i0))
+            for i in range(i0, i1+1, 1):
+                f.write('{:.6f}   {:.6f}\n'.format(l_e[i], l_p[i]))
+            f.write('\n')
+            f.close()
+        #
+        return 0
+
+    def load_pdos_file(self, sfile):
+        nl = 0
+        lines = []
+        with open(sfile, 'r') as f:
+            lines = f.readlines()
+            f.close()
+            nl = len(lines)
+        if nl > 0:
+            i0 = -1
+            for i in range(0, nl):
+                if "PDOS" in lines[i]: i0 = i
+            if i0 >= 0:
+                symb = lines[i0+1]
+                Znum = Z_from_str(symb)
+                mass = float(lines[i0+2])
+                temp = float(lines[i0+3])
+                nums = int(lines[i0+4])
+                ldos = []
+                if nums > 0:
+                    i1 = i0 + 5
+                    i2 = i1 + nums
+                    for i in range(i1, i2):
+                        lspl = lines[i].split()
+                        samp = []
+                        for j in range(0, 2):
+                            samp.append(float(lspl[j]))
+                        ldos.append(samp)
+                    l_pd = np.array(ldos).T
+                    # apply
+                    self.set_temperature(temp)
+                    self.atom = { # atom definition
+                        "Z" : Znum,
+                        "symbol" : symb,
+                        "mass" : mass
+                    }
+                    self.set_pdos(l_pd[0], l_pd[1], 0.001)
+
+    def get_utsqr_ho(self, e, t):
+        '''
+
+        get_utsqr_ho
+
+        Returns the mean squared displacement for the current
+        atom and assuming a harmonic oscillator with Einstein
+        energy e = hbar omega
+
+        Parameters
+        ----------
+
+            e : float
+                phonon energy in eV
+            t : float
+                temperature in K
+
+        Returns
+        -------
+
+            float
+                mean squared displacement in [A^2]
+
+        '''
+        ma = self.atom['mass'] * ec.PHYS_MASSU # mass in kg
+        w = e / ec.PHYS_HBAREV # oscillation Einstein frequency in Hz
+        return ho.usqrt(ma, w, t) * 1.E+20 # msd in [A^2]
+
+    def get_utsqr(self, t, dEp=-1.0, verbose=0):
+        '''
+
+        get_utsqr
+
+        Returns the mean squared displacement for the current
+        atom and PDOS 
+        '''
+        uts = 0.0
+        de = self.pdos["data"]["energy_step"] # use internal energy grid step
+        if dEp > 0.0: de = dEp
+        if verbose > 0: print("energy step:", de)
+        pdos = self.get_pdos_pdf(de)
+        n = len(pdos["energy"])
+        if verbose > 0: print("n:", n)
+        et = t * ec.PHYS_KB / ec.PHYS_QEL # thermal energy in eV
+        if verbose > 0: print("Et:", et)
+        ma = self.atom["mass"] # atomic mass in u
+        s = np.zeros(n, dtype=np.float64)
+        spdos = np.trapz(pdos["pdf"], x=pdos["energy"])
+        if verbose > 0: print("total pdos:", spdos)
+        pdos_thr = self.pthr * np.amax(pdos["pdf"])
+        if n > 0:
+            fm = 0.5E+20 * ec.PHYS_HBAREV * ec.PHYS_HBAR / (ma * ec.PHYS_MASSU)
+            if verbose > 0: print("fm:", fm)
+            for i in range(0, n):
+                ct = 1.0
+                ep = pdos["energy"][i]
+                if (ep > 0.0 and pdos["pdf"][i] > pdos_thr):
+                    if (et > 0.0):
+                        ct = 1.0 / np.tanh(0.5 * ep / et)
+                    s[i] = fm * pdos["pdf"][i] * ct / ep
+            uts = np.trapz(s, x=pdos["energy"]) / spdos
+        return uts
+    
+
     def prepare_displ_mct(self):
         '''
 
@@ -951,6 +1150,80 @@ class phonon_isc:
         l_qabs = np.sqrt(l_q2ex)
         gtp["l_feq"] = get_fen(l_qabs.flatten(), self.atom["data"]["q"], self.atom["data"]["fe"]).reshape(n,n).astype(np.double)
 
+    def prepare_feq(self):
+        '''
+
+        prepare_feq
+
+        Prepares atom scattering factors on the standard q-grid.
+
+        This function is called from class functions and
+        should not be used elsewhere. It relies on a full
+        setup of the object (grid and detector)
+
+        Current implementation is for square grids.
+
+        '''
+        gtp = self.qgrid
+        n = gtp["n"]
+        dq = self.qgrid["dq"]
+        l_q2ex = np.sum(np.meshgrid((gtp["l_qi"] * dq)**2, (gtp["l_qi"] * dq)**2), axis=0)
+        l_qabs = np.sqrt(l_q2ex)
+        gtp["l_feq"] = get_fen(l_qabs.flatten(), self.atom["data"]["q"], self.atom["data"]["fe"]).reshape(n,n).astype(np.double)
+
+
+    def get_trstr0(self, ep, mx, nx, my, ny):
+        '''
+
+        get_trstr0
+
+        Calculates the transition strength for a plane
+        incident wave function on the q grid grid for
+        the current detector.
+
+        This function is called from class functions and
+        should not be used elsewhere. It relies on a full
+        setup of the object (grid and detector)
+
+        '''
+        # q-grid
+        dq = self.qgrid["dq"]
+        pfac = 1.0 * dq * dq # prefactor
+        l_q = self.qgrid["l_q"] # q for the detector hash indices
+        feq = self.qgrid["l_feq"] # scattering factors prepared on the q grid
+        # detector
+        dethash = self.det["hash"]["index"]
+        detvals = self.det["hash"]["value"]
+        nd = len(dethash) # number of detector pixels
+        # get oscillator parameters
+        wi = ep / ec.PHYS_HBAREV
+        mat = self.atom["mass"] * ec.PHYS_MASSU # atom mass in kg
+        ui = ho.usqr0(mat, wi) * 1.E20 # in A^2
+        # calculate Hnm factors for detector q
+        iq = np.array(dethash, dtype=float).T # detector pixel indices
+        uiy = np.unique(iq[0].astype(int)) # unique list for qiy
+        uqy = l_q[uiy] # list of unique qy
+        iuy = np.zeros((np.amax(uiy)+1), dtype=int)
+        for i in range(0, len(uiy)): # generate look-up table for unique iy
+            iuy[uiy[i]] = i
+        uix = np.unique(iq[1].astype(int))
+        uqx = l_q[uix] # unique qx
+        iux = np.zeros((np.amax(uix)+1), dtype=int)
+        for i in range(0, len(uix)):
+            iux[uix[i]] = i
+        ppy = ho.tsq(uqy,ui,my,ny)
+        ppx = ho.tsq(uqx,ui,mx,nx)
+        s = 0.0
+        for i in range(i, nd): # loop over detector pixels
+            p = dethash[i]
+            sdet = detvals[i]
+            ix = iux[p[1]]; iy = iuy[p[0]]
+            ds = ppy[iy] * ppx[ix] * feq[p[0],p[1]] # calculate amplitude
+            #print(i, p, [uqy[iy], uqx[ix]], [ppy[iy], ppx[ix]], ds)
+            ds2 = ds.real**2 + ds.imag**2 # take mod square (inelastic diffraction pattern)
+            s += (ds2 * sdet) # sum up with sensitivity
+        return s * pfac
+    
     def get_trstr(self, ep, mx, nx, my, ny):
         '''
 
@@ -1085,6 +1358,124 @@ class phonon_isc:
         # ... integration over the detector area : sum(abs(psi)^2 * dqx * dqy)
         sdet = np.sum(difpat*l_det) / np.product(a)
         return sdet * pfac
+
+    def get_sdf(self, t, E0, E1, dE, Eres, method='msd', verbose=0):
+        '''
+
+        get_sdf
+
+        Returns a spectral distribution function.
+
+        Requires setup of atom and pdos.
+
+        Parameters
+        ----------
+        t : float
+            temperature in K
+        E0 : float
+            minimum energy loss considered in eV
+        E1 : float
+            maximum energy loss considered in eV
+        dE : float
+            step size of the spectrum in eV
+        Eres : float
+            energy resolution applied in eV
+            make this larger than the internal energy grid step
+            especially if dE is smaller than this step size
+        method : str, default: "msd"
+            calculation method:
+                "msd" : using proportionality to mean squared displacements
+                        in a harmonic oscillator model for small scattering angles,
+                        single phonon excitations, and a plane incident wavefunction
+                "tps" : using a transition potential approach for single-phonon
+                        excitations, taking the detector function into account,
+                        and a plane incident wavefunction,
+                        requires additional setup of q-grid and detector
+
+        Returns
+        -------
+        dict
+            spectral distribution function data as dictionary
+
+        '''
+        pdos = self.get_pdos()
+        Ep_max = np.amax(pdos["energy"])
+        dEp = pdos["energy_step"]
+        # get the energy loss range based on the PDOS grid, extend to gains
+        # assuming single-phonon excitations only
+        l_el0 = np.arange(-Ep_max, Ep_max + 0.5 * dEp, dEp)
+        l_sdf0 = l_el0 * 0.0
+        nel = len(l_el0)
+        npdos = len(pdos["energy"])
+        pdos_thr = self.pthr * np.amax(pdos["pdf"])
+        #
+        if method == "msd": # simple MSD based method (good for small on-axis detectors)
+            for i in range(0, npdos): # loop over phonon energy
+                ep = pdos["energy"][i]
+                if ep <= 0.0: continue # only positive phonon energies
+                jl = int(np.round((Ep_max + ep)/ dEp)) # index of energy-loss
+                jg = int(np.round((Ep_max - ep)/ dEp)) # index of energy-gain
+                pdosi = pdos["pdf"][i] # pdos at ep
+                if pdosi < pdos_thr: continue # ignore this contribution due to low probability
+                uts = self.get_utsqr_ho(ep, t) # msd of the QHO at ep and t
+                b = pbolz(-ep, t) # botzmann factor
+                if (jl>=0 and jl<nel):
+                    l_sdf0[jl] = pdosi * uts * b / (1.0 + b)
+                if (jg>=0 and jg<nel):
+                    l_sdf0[jg] = pdosi * uts / (1.0 + b)
+            #
+        elif method == "tps": # single-phonon transition potential method (OK also for off-axis)
+            for i in range(0, npdos): # loop over phonon energy
+                ep = pdos["energy"][i]
+                if ep <= 0.0: continue # only positive phonon energies
+                jl = int(np.round((Ep_max + ep)/ dEp)) # index of energy-loss
+                jg = int(np.round((Ep_max - ep)/ dEp)) # index of energy-gain
+                pdosi = pdos["pdf"][i] # pdos at ep
+                if pdosi < pdos_thr: continue # ignore this contribution due to low probability
+                w = ep / ec.PHYS_HBAREV # oscillator frequency
+                nimax = nmaxt(ep, self.t, self.pthr) # get max. initial state quantum number to take into account
+                if verbose > 0: print('(get_sdf): including initial states up to m = {:d} ...'.format(nimax))
+                nrmtbd = (np.exp(ep/self.tev) - 1)**2 / np.exp(ep/self.tev) # normalization factor for the 2-d boltzmann distribution
+                # boltzmann distribution threshold
+                pb_thr = nrmtbd * pbolz(ep, self.t) * self.pthr # 2d ground state occupation time relative threshold
+                if verbose > 0: print('(get_sdf): allowing 2d Boltzmann factors above {:.2f}% ...'.format(pb_thr*100.))
+                # per phonon energy (to be weighted by pdos)
+                for niy in range(0, nimax+1): # loop over initial states in the y dimension
+                    eiy = ho.En(niy, w) / ec.PHYS_QEL # initial y state energy in eV
+                    pby = pbolz(eiy, self.t) # initial y state Boltzmann distribution probability
+                    for nix in range(0, nimax+1): # loop over initial states in the x dimension
+                        eix = ho.En(nix, w) / ec.PHYS_QEL # initial x state energy in eV
+                        pbx = pbolz(eix, self.t) # initial x state Boltzmann distribution probability
+                        pb2 = nrmtbd * pbx * pby # normalized occupation of the initial state
+                        if pb2 < pb_thr: continue # skip due to low initial state occupation probability
+                        if verbose > 1: print('(get_sdf): * [{:.4f} eV] initial state [{:d},{:d}] (pbol = {:.2f}%) ...'.format(ep,nix,niy,pb2*100.))
+                        if (jl>=0 and jl<nel): # energy loss transitions are in requested range
+                            sx = self.get_trstr0(ep, nix, nix+1, niy, niy)
+                            sy = self.get_trstr0(ep, nix, nix, niy, niy+1)
+                            l_sdf0[jl] += pdosi * pb2 * (sx + sy) # add losses
+                        if (jg>=0 and jg<nel): # energy gain transitions are in requested range
+                            sx = 0.
+                            sy = 0.
+                            if (nix>0):
+                                sx = self.get_trstr0(ep, nix, nix-1, niy, niy)
+                            if (niy>0):
+                                sy = self.get_trstr0(ep, nix, nix, niy, niy-1)
+                            l_sdf0[jg] += pdosi * pb2 * (sx + sy) # add gains
+        #
+        # get convoluted spectrum on output range
+        l_el1, l_sdf1 = get_spec_conv(l_el0, l_sdf0, E0, E1, dE, Eres)
+        # normalization
+        stot = np.trapz(l_sdf1, x=l_el1)
+        l_sdf2 = l_sdf1 / stot
+        #
+        # generate dictionary return
+        return {  "energy-loss" : l_el1,
+                  "sdf" : l_sdf2,
+                  "method" : method,
+                  "temperature" : t,
+                  "pdos" : pdos,
+                  "atom" : self.atom["Z"]
+                }
 
     def get_mul2d(self, energy_loss_range, single_phonon=False, verbose=0):
         '''
