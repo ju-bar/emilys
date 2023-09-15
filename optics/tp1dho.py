@@ -227,3 +227,51 @@ def tsq(q, us, m, n):
     cf = np.power(b * 1.0J, dn)
     s = cf * gl(b2) * np.exp(-0.5*b2) * np.sqrt(nlof/nhif)
     return np.complex128(s)
+
+
+def tsq_mod(q, us, us_avg, m, n):
+    """
+
+    1D-QHO transition strength as a function of q.
+
+    Sqrt[m! / n!] * (i b)**(n-m) * L_m^(n-m)[b**2] exp[-0.5*b**2]
+
+    b = -2 pi q Sqrt[us]
+
+    Parameters
+    ----------
+        q : numpy.ndarray(dtype=float)
+            reciprocal space coordinate
+        us : float
+            mean squared displacement of the oscillator ground state
+        us_avg : float
+            mean squared displacement applied in Debye-Waller factor
+        m : int
+            initial state quantum number
+        n : int
+            final state quantum number
+
+    Returns
+    -------
+        numpy.ndarray(dtype=complex128)
+            transition strength for each of the input q
+
+
+    """
+    assert us > 0., "expecting us > 0"
+    assert m >= 0, "expecting m >= 0"
+    assert n >= 0, "expecting n >= 0"
+    nhi = max(m, n)
+    nlo = min(m, n)
+    dn = nhi - nlo # transition level
+    #gl = genlaguerre(m, dn, monic=True) # generalized laguerre polynomial
+    gl = genlaguerre(nlo, dn) # generalized laguerre polynomial
+    b = np.float64(-2.0 * np.pi * q * np.sqrt(us)) # b parameter
+    b_avg = np.float64(-2.0 * np.pi * q * np.sqrt(us_avg)) # b_avg parameter
+    b2 = b * b # b^2
+    b2_avg = b_avg**2
+    nlof = np.float64(np.math.factorial(nlo)) # m!
+    nhif = np.float64(np.math.factorial(nhi)) # n!
+    cf = np.power(b * 1.0J, dn)
+    s = cf * gl(b2) * np.exp(-0.5*b2_avg) * np.sqrt(nlof/nhif)
+    return np.complex128(s)

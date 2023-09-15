@@ -1198,6 +1198,7 @@ class phonon_isc:
         # get oscillator parameters
         wi = ep / ec.PHYS_HBAREV
         mat = self.atom["mass"] * ec.PHYS_MASSU # atom mass in kg
+        uavg = self.atom["utsqr"]
         ui = ho.usqr0(mat, wi) * 1.E20 # in A^2
         # calculate Hnm factors for detector q
         iq = np.array(dethash, dtype=float).T # detector pixel indices
@@ -1211,8 +1212,8 @@ class phonon_isc:
         iux = np.zeros((np.amax(uix)+1), dtype=int)
         for i in range(0, len(uix)):
             iux[uix[i]] = i
-        ppy = ho.tsq(uqy,ui,my,ny)
-        ppx = ho.tsq(uqx,ui,mx,nx)
+        ppy = ho.tsq_mod(uqy,ui,uavg,my,ny)
+        ppx = ho.tsq_mod(uqx,ui,uavg,mx,nx)
         s = 0.0
         for i in range(i, nd): # loop over detector pixels
             p = dethash[i]
@@ -1408,6 +1409,7 @@ class phonon_isc:
         nel = len(l_el0)
         npdos = len(pdos["energy"])
         pdos_thr = self.pthr * np.amax(pdos["pdf"])
+        self.atom["utsqr"] = self.get_utsqr(self.t)
         #
         if method == "msd": # simple MSD based method (good for small on-axis detectors)
             for i in range(0, npdos): # loop over phonon energy
@@ -1474,7 +1476,8 @@ class phonon_isc:
                   "method" : method,
                   "temperature" : t,
                   "pdos" : pdos,
-                  "atom" : self.atom["Z"]
+                  "atom" : self.atom["Z"],
+                  "norm" : stot
                 }
 
     def get_mul2d(self, energy_loss_range, verbose=0):
