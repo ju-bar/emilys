@@ -1273,6 +1273,8 @@ class phonon_isc:
         h^2 / (2 pi m0)
         where m0 is the electron rest mass.
 
+        Relativistic correction is not applied yet.
+
         Returns an array of values for a square fft based q-grid.
         The output is an array of type numpy.complex128
 
@@ -1289,6 +1291,90 @@ class phonon_isc:
         hx = ho.tsq(l_q, u02, mx, nx) # x mode transition factors <a_nx|H|a_mx>(q)
         hy = ho.tsq(l_q, u02, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
         h = np.outer(hy, hx) * gtp["l_feq"] # H(qy,qx) = Hx(qx) * Hy(qy) * fe(qy,qx)
+        return h
+    
+    def get_tpq_mod(self, ep, uavg, mx, nx, my, ny):
+        '''
+
+        get_tpq_mod
+
+        Calculates an effective transition potential as a function of q
+        for the given phonon energy ep and the transition quantum
+        numbers mx -> nx, my -> ny and an effective average MSD uavg.
+
+        The returned data is missing a prefactor
+        h^2 / (2 pi m0)
+        where m0 is the electron rest mass.
+
+        Relativistic correction is not applied yet.
+
+        Returns an array of values for a square fft based q-grid.
+        The output is an array of type numpy.complex128
+
+        '''
+        gtp = self.qgrid["tpc"]
+        dq = gtp["dq"]
+        l_qi = gtp["l_qi"]
+        l_q = l_qi * dq # actual spatial frequencies in 1/A
+        # get oscillator parameters
+        w = ep / ec.PHYS_HBAREV # frequency in Hz
+        mat = self.atom["mass"] * ec.PHYS_MASSU # atom mass in kg
+        u02 = ho.usqr0(mat, w) * 1.E20 # ground state MSD in A^2
+        # calculate transition potential -> h
+        hx = ho.tsq_mod(l_q, u02, uavg, mx, nx) # x mode transition factors <a_nx|H|a_mx>(q)
+        hy = ho.tsq_mod(l_q, u02, uavg, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
+        h = np.outer(hy, hx) * gtp["l_feq"] # H(qy,qx) = Hx(qx) * Hy(qy) * fe(qy,qx)
+        return h
+    
+    def get_grid_qsqr_ex(self, qx, qy):
+        '''
+
+        get_grid_qsqr_ex
+
+        Returns a 2d grid of qx**2 + qy**2.
+
+        '''
+        qxx, qyy = np.meshgrid(qx, qy)
+        return qxx**2 + qyy**2
+
+    def get_tpq_mod_ex(self, ep, qx, qy, uavg, mx, nx, my, ny):
+        '''
+
+        get_tpq_mod_ex
+
+        Calculates an effective transition potential as a function of q
+        for the given phonon energy ep and the transition quantum
+        numbers mx -> nx, my -> ny and an effective average MSD uavg.
+
+        The returned data is missing a prefactor
+        h^2 / (2 pi m0)
+        where m0 is the electron rest mass.
+
+        Relativistic correction is not applied yet.
+
+        Returns an array h of values for a q-grid defined by arrays qx
+        and qy, where the rows will be sorted according to qy and the
+        items in each row (i.e. the columns) according to qx, such that
+        h[i,j] if for a vector q = [qx[j], qy[i]].
+
+        Requires the atomic scattering factor to be accessible,
+        i.e. call the routine set_atom before using this function.
+
+        The output is an array of type numpy.complex128
+
+        '''
+        # calculate the q grid
+        ndim = np.array([len(qy), len(qx)])
+        a_q = np.sqrt(self.get_grid_qsqr_ex(qx, qy))
+        # get oscillator parameters
+        w = ep / ec.PHYS_HBAREV # frequency in Hz
+        mat = self.atom["mass"] * ec.PHYS_MASSU # atom mass in kg
+        u02 = ho.usqr0(mat, w) * 1.E20 # ground state MSD in A^2
+        # calculate transition potential -> h
+        hx = ho.tsq_mod(qx, u02, uavg, mx, nx) # x mode transition factors <a_nx|H|a_mx>(q)
+        hy = ho.tsq_mod(qy, u02, uavg, my, ny) # y mode transition factors <a_ny|H|a_my>(q)
+        a_feq = get_fen(a_q.flatten(), self.atom["data"]["q"], self.atom["data"]["fe"]).reshape(ndim).astype(np.double)
+        h = np.outer(hy, hx) * a_feq # H(qy,qx) = Hx(qx) * Hy(qy) * fe(qy,qx)
         return h
 
     def get_trstr_tp(self, probe, ep, mx, nx, my, ny):
@@ -1647,8 +1733,8 @@ class phonon_isc:
         l_dE = np.arange(imin, imax+1, 1) * dE # energy loss grid
         # setup the output arrays
         a_eels = np.zeros(len(l_dE), dtype=np.float64) # total
-        a_eels_sphon = a_eels * 0.0 # single phonon scattering & single inelastic scattering
-        a_eels_dmuls = a_eels * 0.0 # single inelastic scattering
+        #a_eels_sphon = a_eels * 0.0 # single phonon scattering & single inelastic scattering
+        #a_eels_dmuls = a_eels * 0.0 # single inelastic scattering
         # prepare the calculation
         self.prepare_qgrid_tpc() # q-grid used in tp calculations is for fft
         if verbose > 0: print('(get_spec_prb): calculating scattering factors ...')

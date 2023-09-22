@@ -342,6 +342,11 @@ class supercell:
                     'occ' : adds occupancy
                     'uiso' : adds the thermal vibration mean square amplitude
                     'ion' : adds the ionic charge
+
+            Returns
+            -------
+                dict
+
         """
         if l_atoms_idx is None:
             aidx = list(range(0, len(self.l_atoms)))
@@ -361,9 +366,81 @@ class supercell:
                     s = a.get_type_name(li_type_name_adds)
                     if s in d.keys(): # only add site
                         d[s]['sites'].append(a.pos)
+                        d[s]['id'].append(i)
                     else: # add new type
-                        d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge, 'sites' : [a.pos] }
+                        d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge, 'sites' : [a.pos], 'id' : [i] }
         return d
+    
+    def get_sites_in_slices(self, slice_planes=np.array([0.,1.]), periodic=False, l_atoms_idx=None, l_type_name_adds=None):
+        """
+
+        Returns a dictionary with types and their sites distributed into slices.
+        The current structure is sliced along the c (z) direction at the given
+        slice planes in fractional coordinates z/c.
+
+        Parameters
+        ----------
+            slice_planes : numpy.ndarray, dtype=float
+                fractional z coordinates of slice planes
+            periodic : boolean, default: False
+            l_atoms_idx : list, default: None
+                List of indices of the structures atom list to be included.
+                Can be None to use all atoms of the structure.
+            l_type_name_adds : list, default: None
+                List of strings that determine additions made to the
+                type names:
+                'occ' : adds occupancy
+                'uiso' : adds the thermal vibration mean square amplitude
+                'ion' : adds the ionic charge
+
+        Returns
+        -------
+            dict
+
+        """
+
+        sp_used = np.array(slice_planes) # get sorted list of slice planes
+        sp_used.sort()
+        d_slc = { # generate slicing result dictionary
+            'slice_planes' : sp_used
+        }
+        d_slc['num_slices'] = len(sp_used) - 1 # store number of slices
+        #
+        if d_slc['num_slices'] > 0:
+            d_slc['slices'] = {} # generate slice information
+            for islc in range(0, d_slc['num_slices']):
+                s_slc = str(islc)
+                d_slc['slices'][s_slc] = { # 
+                    'range' : { # store slice range
+                        'fractional' : np.array([sp_used[islc], sp_used[islc+1]]),
+                        'absolute_A' : np.array([sp_used[islc] * self.a0[2], sp_used[islc+1] * self.a0[2]])
+                    },
+                    'thickness_A' : self.a0[2] * (sp_used[islc+1] - sp_used[islc]) # store slice thickness
+                }
+
+            # get atom types
+            d_types = self.get_type_dict(l_atoms_idx=l_atoms_idx, l_type_name_adds=l_type_name_adds)
+            #
+            for s_type in d_types: # per type - sort into slices
+                d_slc[s_type] = deepcopy(d_types[s_type]) # get type info copy
+                d_slc[s_type]['slice'] = {} # add slicing
+                d_ts = d_slc[s_type]['slice'] # programming shortcut
+                for s_slc in d_slc['slices']:
+                    d_ts[s_slc] = deepcopy(d_slc['slices'][s_slc])
+                    # add lists for sites and ids
+                    d_ts[s_slc]['sites'] = []
+                    d_ts[s_slc]['id'] = []
+                    fz_rng = d_ts[s_slc]['range']['fractional']
+                    nat = len(d_slc[s_type]['id'])
+                    if nat > 0:
+                        for id_at in d_slc[s_type]['id']:
+                            fz_pos = self.l_atoms[id_at].pos[2]
+                            if periodic: fz_pos = np.round((fz_pos % 1.0),12) # catch fp round-off problems
+                            if (fz_pos >= fz_rng[0] and fz_pos < fz_rng[1]):
+                                d_ts[s_slc]['id'].append(id_at)
+                                d_ts[s_slc]['sites'].append(self.l_atoms[id_at].pos)
+        #
+        return d_slc
 
     def add_atom(self, Z, uiso, pos, occ = 1.0, charge = 0.0, faniso = np.array([0.,0.,0.])):
         """
