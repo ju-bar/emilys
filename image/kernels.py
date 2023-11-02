@@ -10,11 +10,11 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-from numba import jit, njit # include compilation support
+from numba import njit # include compilation support
 import numpy as np
 import emilys.optics.aperture as apert
 
-@jit # compilation decorator, do this, if you intend to call the function several timed
+@njit # compilation decorator, do this, if you intend to call the function several timed
 def bwl_gaussian(shape=None, size=0.):
     '''
     Calculates a bandwidth limiting kernel of Gaussian shape with
@@ -107,7 +107,7 @@ def source_delta(kernel):
     kernel[0,0] = 1.
     return 0
 
-@jit
+@njit
 def source_normal(kernel, samp, src_size):
     '''
     Calculates normal distribution values in a given array.
@@ -147,7 +147,7 @@ def source_normal(kernel, samp, src_size):
     kernel[...] = kernel / norm
     return 0
 
-@jit
+@njit
 def source_cauchy(kernel, samp, src_size):
     '''
     Calculates Cauchy distribution values in a given array.
@@ -190,7 +190,7 @@ def source_cauchy(kernel, samp, src_size):
     kernel[...] = kernel / norm
     return 0
 
-@jit
+@njit
 def source_disk(kernel, samp, src_size):
     '''
     Calculates disk distribution values in a given array.

@@ -11,7 +11,7 @@ published under the GNU General Publishing License, version 3
 
 """
 #
-from numba import jit # include compilation support
+from numba import njit # include compilation support
 import numpy as np # include numeric functions
 #
 def image_load(str_file_name, nx, ny, datatype):
@@ -47,7 +47,7 @@ def image_at_nn(image, pos):
     v = image[j,i]
     return v
 #
-@jit
+@njit
 def image_at_bilin(image, pos):
     '''
 
@@ -97,7 +97,7 @@ def image_at(image, pos, ipol=1):
     }
     return ipol_switcher.get(ipol, image_at_bilin(image, pos))
 #
-@jit
+@njit
 def image_resample(image, nout, p0in=np.array([0.,0.]), 
                    p0out=np.array([0.,0.]), 
                    sampling=np.array([[1.,0.],[0.,1.]]), ipol=1):
@@ -213,7 +213,7 @@ def image_ser_resample_ft(img_ser, dim_out):
         img_ser_out[i,:,:] = image_resample_ft(img_ser[i], dim_out)
     return img_ser_out
 #
-@jit
+@njit
 def image_pos_sum(image, lpoints, ipol=1):
     '''
 
@@ -302,7 +302,6 @@ def com(array):
     return np.array([sx/s0,sy/s0])
 
 #
-@jit
 def data_convolute_2d(sfile_fmt, ix, iy, ndata, krn, thr_krn):
     dkrn = krn.shape
     my = dkrn[0]
