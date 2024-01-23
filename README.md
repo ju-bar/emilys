@@ -2,7 +2,7 @@
 
 Electron Microscopy Image anaLYSis tools
 
-Version: 0.1.7
+Version: 0.1.8
 
 ## Authors and Copyright
 
@@ -24,6 +24,8 @@ If you just want to use it, install via
 
 ## Changes
 
+* Version 0.1.8:
+Added mean squared displacement functions and other smaller changes.
 * Version 0.1.7:
 Added 1-dimensional harmonic oscillator functions and transitions.
 * Version 0.1.6:
