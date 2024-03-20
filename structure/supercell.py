@@ -469,7 +469,7 @@ class supercell:
         """
         ato = atom(Z, pos, uiso, occ, charge, faniso)
         self.l_atoms.append(ato)
-        return len(self.l_atoms)
+        return len(self.l_atoms)-1
 
     def keep_atoms(self, l_atoms_idx):
         """
