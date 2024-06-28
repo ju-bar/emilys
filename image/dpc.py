@@ -35,13 +35,15 @@ def dpc_image(a, b, c, d, alpha = 0.0):
             imaginary part is the y DPC component
 
     """
-    dx = (a - c).astype(np.float64)
-    dy = (b - d).astype(np.float64)
-    z = np.empty(dx.shape, dtype=np.complex128)
-    sa = np.sin(alpha)
-    ca = np.cos(alpha)
-    z.real = dx * ca - dy * sa
-    z.imag = dy * ca + dx * sa
+    dx = (a - c).astype(np.float64) # assume opposite segments a and c to form x component
+    dy = (b - d).astype(np.float64) # assume opposite segments b and d along perpendicular of a and c to form y component
+    z = np.empty(dx.shape, dtype=np.complex128) # prepare complex output array
+    sa = np.sin(alpha) # sin of rotation
+    ca = np.cos(alpha) # cos of rotation
+    # the following steps applies a rotation equivalent to a projection on rotated basis vectors
+    # ex = (ca, sa), ey = (ca, -sa)
+    z.real = dx * ca - dy * sa # DPCx after rotation
+    z.imag = dy * ca + dx * sa # DPCy after rotation
     return z
 
 def idpc_image(a, b, c, d, alpha=0., rk = [0., 1.], fp = 2.):
