@@ -10,7 +10,6 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-
 import numpy as np
 
 def dpc_image(a, b, c, d, alpha = 0.0):
@@ -40,8 +39,7 @@ def dpc_image(a, b, c, d, alpha = 0.0):
     z = np.empty(dx.shape, dtype=np.complex128) # prepare complex output array
     sa = np.sin(alpha) # sin of rotation
     ca = np.cos(alpha) # cos of rotation
-    # the following steps applies a rotation equivalent to a projection on rotated basis vectors
-    # ex = (ca, sa), ey = (ca, -sa)
+    # the following steps applies a rotation equivalent to a projection on rotated basis vectors ex = (ca, sa), ey = (ca, -sa)
     z.real = dx * ca - dy * sa # DPCx after rotation
     z.imag = dy * ca + dx * sa # DPCy after rotation
     return z
