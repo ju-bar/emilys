@@ -10,10 +10,9 @@ https://github.com/ju-bar/emilys
 published under the GNU General Publishing License, version 3
 
 """
-from numba import jit # include compilation support
+#from numba import njit # include compilation support
 import numpy as np
 
-@jit
 def limitn(n, theta, phase_tol_pi=0.25):
     """
     Calculates the n-th order aberration tolerance for a given
@@ -213,8 +212,14 @@ class aberr_axial_func:
         '''
         reschi = 0.
         nol = self.__max_order + 1
-        if lcoeff != None: self.lcoeff = lcoeff
-        if luse != None: self.luse_term = luse
+        if lcoeff is None:
+            i = 1
+        else:
+            self.lcoeff = lcoeff
+        if luse is None:
+            i = 1
+        else:
+            self.luse_term = luse
         px = 1.
         xfn = np.full(nol, 1., dtype=complex)
         for i in range(1, nol):
@@ -263,8 +268,14 @@ class aberr_axial_func:
         lc = np.zeros(nx, dtype=float)
         rchi = 0.
         nol = self.__max_order + 1
-        if lcoeff != None: self.lcoeff = lcoeff
-        if luse != None: self.luse_term = luse
+        if lcoeff is None:
+            i = 1
+        else:
+            self.lcoeff = lcoeff
+        if luse is None:
+            i = 1
+        else:
+            self.luse_term = luse
         xfn = np.full(nol, 1., dtype=complex)
         #
         # loop over coordinates
@@ -313,8 +324,14 @@ class aberr_axial_func:
         '''
         gradchi = 0. + 0.j
         nol = self.__max_order + 2
-        if lcoeff != None: self.lcoeff = lcoeff
-        if luse != None: self.luse_term = luse
+        if lcoeff is None:
+            i = 1
+        else:
+            self.lcoeff = lcoeff
+        if luse is None:
+            i = 1
+        else:
+            self.luse_term = luse
         px = 1.
         # initialize complex powers [0., 1., x, x^2, x^3, ...]
         xfn = np.zeros(nol, dtype=complex)
@@ -369,8 +386,14 @@ class aberr_axial_func:
         lg = np.zeros(nx, dtype=complex)
         gradchi = 0. + 0.j
         nol = self.__max_order + 2
-        if lcoeff != None: self.lcoeff = lcoeff
-        if luse != None: self.luse_term = luse
+        if lcoeff is None:
+            i = 1
+        else:
+            self.lcoeff = lcoeff
+        if luse is None:
+            i = 1
+        else:
+            self.luse_term = luse
         # initialize complex powers [0., 1., x, x^2, x^3, ...]
         xfn = np.zeros(nol, dtype=complex)
         xfn[1] = 1.

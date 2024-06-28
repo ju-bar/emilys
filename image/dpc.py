@@ -67,30 +67,29 @@ def idpc_image(a, b, c, d, alpha=0., rk = [0., 1.], fp = 2.):
     Returns
     -------
 
-        numpy.ndarray (complex)
-            real part is the x DPC component
-            imaginary part is the y DPC component
+        numpy.ndarray (float)
+            iDPC image
 
     """
-    nd = a.shape
-    pf = -1.J / (2. * np.pi)
-    kx = np.tile([np.fft.fftfreq(nd[1])],(nd[0],1))
-    ky = np.tile([np.fft.fftfreq(nd[0])],(nd[1],1)).T
-    k2 = kx**2 + ky**2
-    k2[0,0] = 1.0
-    ik2 = 1.0 / k2
-    ik2[0,0] = 0.0
-    kmin = max(1. / nd[0], 1. / nd[1])
-    ft02 = max(kmin, rk[0])**2
-    ft12 = max(kmin, rk[1])**2
-    flt = (1. - np.exp(-1.0 * (k2 / ft02)**fp)) * np.exp(-1.0 * (k2 / ft12)**fp)
-    z = dpc_image(a, b, c, d, alpha)
-    fzx = np.fft.fft2(z.real)
-    fzy = np.fft.fft2(z.imag)
-    fidpc = pf * (kx * fzx + ky * fzy) * flt * ik2
-    idpc = np.fft.ifft2(fidpc)
+    nd = a.shape # get image size
+    pf = -1.J / (2. * np.pi) # setup imaginary prefactor 2 Pi J
+    kx = np.tile([np.fft.fftfreq(nd[1])],(nd[0],1)) # get horizontal frequency list, tile to full grid
+    ky = np.tile([np.fft.fftfreq(nd[0])],(nd[1],1)).T # get vertical frequency list, tile to full grid
+    k2 = kx**2 + ky**2 # get list of squared frequency, on full grid
+    k2[0,0] = 1.0 # set factor 1 on DC value to avoid division by zero below
+    ik2 = 1.0 / k2 # inverse squared frequencies on full grid
+    ik2[0,0] = 0.0 # reset DC inverse frequency to zero (no iDPC coefficient available for this)
+    kmin = max(1. / nd[0], 1. / nd[1]) # get frequency steps
+    ft02 = max(kmin, rk[0])**2 # setup lower bwl of filter from input rk
+    ft12 = max(kmin, rk[1])**2 # setup upper bwl of filer from input rk
+    flt = (1. - np.exp(-1.0 * (k2 / ft02)**fp)) * np.exp(-1.0 * (k2 / ft12)**fp) # calculate bwl filter
+    z = dpc_image(a, b, c, d, alpha) # calculate dpc images (as complex quantity)
+    fzx = np.fft.fft2(z.real) # Fourier transform DPCx
+    fzy = np.fft.fft2(z.imag) # Fourier transform DPCy
+    fidpc = pf * (kx * fzx + ky * fzy) * flt * ik2 # generate Fourier transform of the iDPC image incl. filter
+    idpc = np.fft.ifft2(fidpc) # inverse FFT to obtain the iDPC data
     #print(np.sum(idpc.real),np.sum(idpc.imag))
-    return idpc.real
+    return idpc.real # return iDPC image as real part of the previous
 
 
 

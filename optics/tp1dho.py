@@ -274,4 +274,4 @@ def tsq_mod(q, us, us_avg, m, n):
     nhif = np.float64(np.math.factorial(nhi)) # n!
     cf = np.power(b * 1.0J, dn)
     s = cf * gl(b2) * np.exp(-0.5*b2_avg) * np.sqrt(nlof/nhif)
-    return np.complex128(s)
+    return np.array(s, dtype=np.complex128)

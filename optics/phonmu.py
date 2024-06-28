@@ -421,7 +421,9 @@ class phonon_isc:
         self.det = { # detector definition
             "inner" : 0.0,
             "outer" : 1.0,
-            "center" : [0.0, 0.0]
+            "center" : [0.0, 0.0],
+            "edge_smooth" : 1.0,
+            "transmission_threshold" : 0.001
         }
         self.pdos = { # phonon density of states
         }
@@ -618,7 +620,7 @@ class phonon_isc:
                 outer collection range limitation in 1/A
             center : array of floats (len = 2)
                 center position (qy, qx) of the detector in the diffraction plane in 1/A
-            det_smooth : float, default: 0.5
+            det_smooth : float, default: 1.0
                 detector edge smoothness in fractions of the q grid step
             det_threshold : float, default: 0.001
                 detector transmisson threshold
@@ -751,6 +753,14 @@ class phonon_isc:
         }
 
     def get_pdos(self):
+        """
+        
+        Returns pdos data as dict.
+
+        Note: data in key 'pdf' is probability and not probability density.
+        Thus actually PDF = d['pdf']/d['energy_step'].
+
+        """
         l_p = self.pdos["data"]["pdos"]
         l_e = self.pdos["data"]["energy"]
         emax = l_e[-1] + self.pdos["data"]["energy_step"]

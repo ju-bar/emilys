@@ -156,18 +156,61 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, debug=False)
     assert np.abs(rad) > 2, 'expecting rad > 2 (parameter 3)'
     (nfit, xfit, yfit) = get_data_in_circroi(image, pos, rad, wrap)
     assert nfit > 2 * nprm, 'insufficient number of image points '\
-        '({:d} of {:d}) in region of interest'.format(nfit, 2*nprm)
-    if debug: print('dbg (fit_local_gauss_2d): nfit = {:d}'.format(nfit))
+        f'({nfit} of {2*nprm}) in region of interest'
+    if debug:
+        print(f'dbg (fit_local_gauss_2d): nfit = {nfit}')
     ysig = None
-    if (imagesigma != None): # also extract image sigma values
+    if imagesigma is not None: # also extract image sigma values
         (nfit2, ysig) = get_values_in_circroi(imagesigma, pos, rad, wrap)
         assert nfit == nfit2, 'internal data size conflict with sigma data'
     prm0 = [ pos[0], pos[1], np.max(yfit) - np.min(yfit), 
              1./np.abs(rad), 0., 1./np.abs(rad), np.min(yfit)] # initial parameter set
-    if debug: print('dbg (fit_local_gauss_2d): prm0 =', prm0)
+    if debug:
+        print('dbg (fit_local_gauss_2d): prm0 =', prm0)
     sol = curve_fit( pks.gauss_2d, xfit.T, yfit, prm0,
                                 jac=pks.gauss_2d_jac, sigma=ysig) # call scipy.optimize.curve_fit
-    if debug: print('dbg (fit_local_gauss_2d): prm =', sol[0])
+    if debug:
+        print('dbg (fit_local_gauss_2d): prm =', sol[0])
     solerr = np.sqrt(np.diag(sol[1]))
-    if debug: print('dbg (fit_local_gauss_2d): std =', solerr)
+    if debug:
+        print('dbg (fit_local_gauss_2d): std =', solerr)
     return [sol[0], solerr]
+# %%
+def com_local(image, pos, rad, wrap=True, debug=False):
+    '''
+    Measures the center of mass in a circular local image area.
+
+    Parameters:
+        image : numpy.ndarray
+            image data
+        pos : array (x,y)
+            center position for the fit region of interest
+        rad : float
+            radius of the fit region of interest
+            must be larger than 2
+        wrap : bool
+            flag for using periodic wrap around when crossing
+            input image bounds
+
+    Return:
+        [center of mass x, y]
+        
+    '''
+    ndim = np.array(image.shape)
+    assert ndim.size == 2, 'expecting a 2d array as parameter 1'
+    assert np.size(pos) == 2, 'expecting a tuple as parameter 2'
+    assert np.abs(rad) > 2, 'expecting rad > 2 (parameter 3)'
+    (nfit, xfit, yfit) = get_data_in_circroi(image, pos, rad, wrap)
+    assert nfit > 9, 'insufficient number of image points '\
+        f'({nfit}) in region of interest'
+    if debug:
+        print(f'dbg (com_local): nfit = {nfit}')
+    com = pos # initialize result
+    if debug:
+        print('dbg (com_local): com0 =', com)
+    m0 = np.sum(yfit) # total mass
+    m1 = np.dot(xfit.T, yfit)
+    com = m1 / m0 # first moment
+    if debug:
+        print('dbg (com_local): com =', com)
+    return com
