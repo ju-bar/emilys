@@ -97,7 +97,7 @@ def set_atom_str_CEL(s):
     in_occ = float(l_cmp[4])
     in_uiso = float(l_cmp[5]) * 100. / (8. * np.pi**2) #  usio in Angst^2
     in_faniso = np.array([0.,0.,0.])
-    if len(l_cmp > 8):
+    if len(l_cmp) > 8:
         in_faniso = np.array([float(l_cmp[6]), float(l_cmp[7]), float(l_cmp[8])])
     return ato.atom(Z=in_Z, pos = in_pos, uiso=in_uiso, occ=in_occ, charge=in_charge, faniso=in_faniso)
 
