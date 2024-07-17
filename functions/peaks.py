@@ -55,7 +55,7 @@ def gauss_2d_jac(x_tuple, x0, y0, a, bxx, bxy, byy, c):
     dbxx = -2 * a * vexp * (bxx * dx2 + bxy * dxy)
     dbxy = -2 * a * vexp * (bxy * (dx2 + dy2) + (bxx + byy) * dxy)
     dbyy = -2 * a * vexp * (bxy * dxy + byy * dy2)
-    dc = np.full(np.size(x), 1., dtype=float)
+    dc = np.full(np.size(x), 1., dtype=x_tuple.dtype)
     return np.array([dx0, dy0, da, dbxx, dbxy, dbyy, dc]).T
 # %%
 def gauss_2d_round(x_tuple, x0, y0, a, b, c):

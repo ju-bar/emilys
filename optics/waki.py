@@ -177,9 +177,28 @@ class waki:
         return fx
 
     def get_fe(self, Z, s):
+        '''
+
+        Atomic form factors for electron scattering from
+        those for X-rays using the Mott formula. The X-ray
+        form factors are tabulated as by Wa. & Ki.
+
+        Parameters
+        ----------
+            Z : int
+                atomic number
+            s : float
+                length of scattering vector s = q/2 in 1/A
+
+        Returns
+        -------
+            float
+                atomic form factor for electron scattering in A
+
+        '''
         c1 = ec.EL_CFFA
         s2 = s**2
-        al = self.iyr # inverse yukawa range in A (only used for small s2 in ions to calculate 1/(s2+al**2))
+        al = self.iyr # inverse yukawa range in 1/A (only used for small s2 in ions to calculate 1/(s2+al**2))
         a = self.get_prm(Z)
         if s2 < self.s2_min: # small s approximation
             total = a[12] # c
@@ -203,16 +222,16 @@ class waki:
             # add a correction resolving the discontinuity at s2 = s20
             # total = total + deltak2/s20
             # apply prefactor  m0 e^2 / ( 2 h^2 ) / ( 4 Pi eps0 ) *10^-10 [ -> A^-1 ]
-            return c1 * total
+            return c1 * total # in A
         else: # large s range
             if s2 > 36.0: # out of parameterization range ?
 	            # Large scattering vector limit
                 s2l = s2 + a[14]
-                return c1 * a[13] / s2l
+                return c1 * a[13] / s2l # in A
             else: # scattering vector in parameterisation range
                 fx = self.get_fx(Z, s) # get x-ray form factor
                 # apply Mott formula to fx to get fe
-                return c1 * (a[13] - fx) / s2
+                return c1 * (a[13] - fx) / s2 # in A
             
     def register_dwf(self, s, dwf, ip_kind='linear'):
         """

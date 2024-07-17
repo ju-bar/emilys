@@ -128,7 +128,7 @@ def get_values_in_circroi(image, pos, rad, wrap=True):
         return [nfit, daty[0:nfit]]
     return [0, []]
 # %%
-def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, debug=False):
+def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, method='lm', debug=False):
     '''
     Fits a gaussian peak to a circular local image area.
 
@@ -143,6 +143,12 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, debug=False)
         wrap : bool
             flag for using periodic wrap around when crossing
             input image bounds
+        imagesigma : numpy.ndarray or None
+            image data error estimates
+        method : str
+            optimization methods, see scipy.optimize.curve_fit
+        debug : bool
+            flag text output
 
     Return:
         [best fitting parameters, parameter error estimates]
@@ -159,16 +165,28 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, debug=False)
         f'({nfit} of {2*nprm}) in region of interest'
     if debug:
         print(f'dbg (fit_local_gauss_2d): nfit = {nfit}')
-    ysig = None
+    ysigu = None
     if imagesigma is not None: # also extract image sigma values
         (nfit2, ysig) = get_values_in_circroi(imagesigma, pos, rad, wrap)
+        ysigu = np.array(ysig).astype(np.float64)
         assert nfit == nfit2, 'internal data size conflict with sigma data'
-    prm0 = [ pos[0], pos[1], np.max(yfit) - np.min(yfit), 
-             1./np.abs(rad), 0., 1./np.abs(rad), np.min(yfit)] # initial parameter set
+    # initial parameter set
+    prm0 = [ pos[0], pos[1], np.amax(yfit) - np.amin(yfit), 
+             1.2/np.abs(rad), 0.0001/np.abs(rad), 1.2/np.abs(rad), np.amin(yfit)]
+    # bounds
+    bds  = [[pos[0]-0.7*rad, pos[1]-0.7*rad, 0.1*prm0[2], 0.1*prm0[3], -10/np.abs(rad), 0.1*prm0[5], -np.inf],
+            [pos[0]+0.7*rad, pos[1]+0.7*rad, 10*prm0[2], 10*prm0[3], 10/np.abs(rad), 10*prm0[5], np.inf]]
     if debug:
         print('dbg (fit_local_gauss_2d): prm0 =', prm0)
-    sol = curve_fit( pks.gauss_2d, xfit.T, yfit, prm0,
-                                jac=pks.gauss_2d_jac, sigma=ysig) # call scipy.optimize.curve_fit
+    sol = curve_fit(pks.gauss_2d, 
+                    np.array(xfit.T).astype(np.float64), 
+                    np.array(yfit).astype(np.float64), 
+                    np.array(prm0).astype(np.float64),
+                    jac=pks.gauss_2d_jac,
+                    sigma=ysigu, 
+                    method='trf', 
+                    bounds=bds
+                    ) # call scipy.optimize.curve_fit
     if debug:
         print('dbg (fit_local_gauss_2d): prm =', sol[0])
     solerr = np.sqrt(np.diag(sol[1]))
