@@ -15,7 +15,7 @@ from numba import njit, float64 # include compilation support
 import numpy as np # include numeric functions
 # %%
 @njit(float64(float64[:],float64[:],float64,float64))
-def aperture(q=np.array([0.,0.]), q0=np.array([0.,0.]), qlim=1., qsmt=0.):
+def aperture(q, q0, qlim, qsmt):
     """
 
     Calculates transmission values for a round smooth aperture in 2D.

@@ -128,7 +128,7 @@ def get_values_in_circroi(image, pos, rad, wrap=True):
         return [nfit, daty[0:nfit]]
     return [0, []]
 # %%
-def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, method='lm', debug=False):
+def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, ftol=1.E-8, debug=False):
     '''
     Fits a gaussian peak to a circular local image area.
 
@@ -145,8 +145,8 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, method='lm',
             input image bounds
         imagesigma : numpy.ndarray or None
             image data error estimates
-        method : str
-            optimization methods, see scipy.optimize.curve_fit
+        ftol : float (default ftol=1.E-8)
+            tolerance passes through to least-squares
         debug : bool
             flag text output
 
@@ -185,7 +185,8 @@ def fit_local_gauss_2d(image, pos, rad, wrap=True, imagesigma=None, method='lm',
                     jac=pks.gauss_2d_jac,
                     sigma=ysigu, 
                     method='trf', 
-                    bounds=bds
+                    bounds=bds,
+                    ftol = ftol
                     ) # call scipy.optimize.curve_fit
     if debug:
         print('dbg (fit_local_gauss_2d): prm =', sol[0])
