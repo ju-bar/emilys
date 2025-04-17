@@ -97,7 +97,6 @@ def image_at(image, pos, ipol=1):
     }
     return ipol_switcher.get(ipol, image_at_bilin(image, pos))
 #
-@njit
 def image_resample(image, nout, p0in=np.array([0.,0.]), 
                    p0out=np.array([0.,0.]), 
                    sampling=np.array([[1.,0.],[0.,1.]]), ipol=1):
@@ -237,6 +236,46 @@ def image_pos_sum(image, lpoints, ipol=1):
     for l in range(0, npts):
         spt += image_at(image, lpoints[l], ipol)
     return spt
+#
+def idx2posi(idx, shape):
+    '''
+
+    Calculates the array position for an array of given shape
+    from a given item index.
+
+    If idx is larger than the shape can hold, the first position
+    index in the output will go out of bounds for shape.
+
+    parameters
+    ----------
+
+        idx : int
+            an index
+        shape : array like (int(:))
+            a shape
+        
+    returns
+    -------
+
+        array like shape (int(:))
+            a position according to shape,
+            can be out of bounds on axis 0
+
+    '''
+    ndim = np.array(shape, dtype=int)
+    posi = np.zeros_like(ndim)
+    if len(ndim) < 2:
+        posi[-1] = idx
+    else:
+        jdx = idx
+        for i in range(0, len(ndim) - 1):
+            nc = np.prod(ndim[(i+1):])
+            j = jdx%nc
+            posi[i] = int(np.round((jdx-j)/nc))
+            #print(i, jdx, nc, j, posi[i])
+            jdx = j
+        posi[-1] = jdx
+    return posi
 #
 def maxpos(array):
     '''

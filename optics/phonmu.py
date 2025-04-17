@@ -199,7 +199,7 @@ def numint_pdos(l_ev, l_pdos):
         j = np.argmin(e0) # find smallest energy
         e1[i1] = e0[j] # transfer energy to sorted energy list
         p1[i1] = l_pdos[j] # transfer pdos value
-        e0[j] = e_cap # invalidate the transfert energy
+        e0[j] = e_cap # invalidate the transfered energy
         i1 += 1 # advance in sorted list
     # integral
     s = np.trapz(p1[0:i1], x=e1[0:i1])

@@ -4,7 +4,10 @@ Created on Mon Jan 3 11:54:00 2022
 @author: ju-bar
 
 Functions related to scattering coefficients using the parameterization of
-Waasmaier & Krifel (X-ray form factors): Acta Cryst. A 51 (1995) 416 - 431
+Waasmaier & Kirfel (X-ray form factors): Acta Cryst. A 51 (1995) 416 - 431
+
+Absorptive form factor integration according to Hall & Hirsch (Effect of TDS):
+Proc. Roy. Soc. A 286 (1965) 158-177
 
 This code is part of the 'emilys' repository
 https://github.com/ju-bar/emilys
@@ -12,14 +15,17 @@ published under the GNU General Publishing License, version 3
 
 """
 #from emilys.structure.atomtype import atom_type_symbol
-import emilys.optics.econst as ec
+
 import numpy as np
 from numba import njit, float64, int64
 from scipy.interpolate import interp1d
-
+import emilys.optics.econst as ec
 
 @njit(float64(float64[:,:], float64[:], float64[:], int64, int64), parallel=True)
 def numint2d(y, x1, x2, n1, n2):
+    '''
+    function numint2d integrates y over 2d coordinates x1, x2 of grid size n1, n2
+    '''
     s = 0.0
     # integrate by trapezoidal summation
     sx2 = np.zeros(n2, dtype=np.float64)
@@ -32,6 +38,175 @@ def numint2d(y, x1, x2, n1, n2):
     for i2 in range(0, n2-1):
         s += (sx2[i2+1]+sx2[i2])*(x2[i2+1]-x2[i2])
     return s * 0.5 #  half-sum (trapez)
+
+@njit(float64(float64, float64))
+def _get_dwfs(uiso, s):
+    p1 = -8.0*np.pi**2
+    return np.exp(p1 * uiso * s * s)
+
+@njit(float64(float64, float64))
+def _get_dwfs2(uiso, s2):
+    p1 = -8.0*np.pi**2
+    return np.exp(p1 * uiso * s2)
+
+@njit(float64(float64[:], float64[:]))
+def _get_dwfaq(u, q):
+    '''
+    Calculates an anisotropic Debye-Waller factor for an
+    input displacement matrix u and diffraction vector q.
+
+    u = [Uxx, Uyy, Uzz, Uxy, Uxz, Uyz]
+    q = [Qx, Qy, Qz]
+
+    DWF = Exp[-2pi (  Uxx Qx^2 + Uyy Qy^2 + Uzz Qz^2
+                    + 2Uxy Qx Qy + 2Uxz Qx Qz + 2Uyz Qy Qz)]
+
+    In the isotropic case, Uxx = Uyy = Uzz, Uxy = Uxz = Uyz = 0
+    the result of this is
+
+    DWF = Exp[-2pi Uxx (Qx^2 + Qy^2 + Qz^2) ] = Exp[-2pi Uxx |q|^2 ]
+
+    '''
+    p1 = -2.0*np.pi**2
+    p2 =  u[0] * q[0]**2   + u[1] * q[1]**2   + u[2] * q[2]**2 \
+        + 2*u[3]*q[0]*q[1] + 2*u[4]*q[0]*q[2] + 2*u[5]*q[1]*q[2]
+    return np.exp(p1 * p2)
+
+
+@njit(float64(float64[:], float64))
+def _get_fxs(a, s):
+    s2 = s**2
+    fx = a[12]
+    for n in range(2,7):
+        m = n + 5
+        xbs = -a[m] * s2 # argument of exponential
+        fx += a[n] * np.exp(xbs) # accumulation of a_i * exp(-b_i s^2)
+    return fx
+
+@njit(float64(float64[:], float64))
+def _get_fxs2(a, s2):
+    fx = a[12]
+    for n in range(2,7):
+        m = n + 5
+        xbs = -a[m] * s2 # argument of exponential
+        fx += a[n] * np.exp(xbs) # accumulation of a_i * exp(-b_i s^2)
+    return fx
+
+@njit(float64(float64[:], float64, float64, float64))
+def _get_fes(a, s, iyr, s2_min):
+    s2 = s**2
+    c1 = ec.EL_CFFA
+    if s2 < s2_min: # small s approximation
+        total = a[12] # c
+        for n in range(2,7):
+            total += a[n] # sum over all a_i
+            # if 0 == deltak = Z - sum a_i - c then we have a neutral atom
+        deltak = a[13] - total
+        deltak1 = float(np.round(deltak)) # integer part = ionic charge
+        # Z - sum_ai - INT( Z - sum_ai )
+        # deltak2 = deltak - deltak1   ! fractional part = table inconsistency
+        # calculate fe
+        total = 0.0
+        for n in range(2,7):
+            m = n + 5 # index for b_i
+            # approximative form of a_i * Exp[ -b_i * s^2 ] / s^2 for small s^2
+            #                       a_i + a_i * b_i * ( 1 - 0.5*b_i*s^2 )
+            total += a[n]*a[m]*(1.0 - 0.5*a[m]*s2)
+        # add ionic charge contribution (integer charge deltak1)
+        # total = total + deltak1/(s2 + al**2)  ! ionic charge contribution
+        total += deltak1/(s2 + iyr**2) # ionic charge contribution
+        # add a correction resolving the discontinuity at s2 = s20
+        # total = total + deltak2/s20
+        # apply prefactor  m0 e^2 / ( 2 h^2 ) / ( 4 Pi eps0 ) *10^-10 [ -> A^-1 ]
+        return c1 * total # in A
+    else: # large s range
+        if s2 > 36.0: # out of parameterization range ?
+	        # Large scattering vector limit
+            s2l = s2 + a[14]
+            return c1 * a[13] / s2l # in A
+        else: # scattering vector in parameterisation range
+            fx = _get_fxs(a, s) # get x-ray form factor
+            # apply Mott formula to fx to get fe
+            return c1 * (a[13] - fx) / s2 # in A
+        
+@njit(float64(float64[:], float64, float64, float64))
+def _get_fes2(a, s2, iyr, s2_min):
+    c1 = ec.EL_CFFA
+    if s2 < s2_min: # small s approximation
+        total = a[12] # c
+        for n in range(2,7):
+            total += a[n] # sum over all a_i
+            # if 0 == deltak = Z - sum a_i - c then we have a neutral atom
+        deltak = a[13] - total
+        deltak1 = float(np.round(deltak)) # integer part = ionic charge
+        # Z - sum_ai - INT( Z - sum_ai )
+        # deltak2 = deltak - deltak1   ! fractional part = table inconsistency
+        # calculate fe
+        total = 0.0
+        for n in range(2,7):
+            m = n + 5 # index for b_i
+            # approximative form of a_i * Exp[ -b_i * s^2 ] / s^2 for small s^2
+            #                       a_i + a_i * b_i * ( 1 - 0.5*b_i*s^2 )
+            total += a[n]*a[m]*(1.0 - 0.5*a[m]*s2)
+        # add ionic charge contribution (integer charge deltak1)
+        # total = total + deltak1/(s2 + al**2)  ! ionic charge contribution
+        total += deltak1/(s2 + iyr**2) # ionic charge contribution
+        # add a correction resolving the discontinuity at s2 = s20
+        # total = total + deltak2/s20
+        # apply prefactor  m0 e^2 / ( 2 h^2 ) / ( 4 Pi eps0 ) *10^-10 [ -> A^-1 ]
+        return c1 * total # in A
+    else: # large s range
+        if s2 > 36.0: # out of parameterization range ?
+	        # Large scattering vector limit
+            s2l = s2 + a[14]
+            return c1 * a[13] / s2l # in A
+        else: # scattering vector in parameterisation range
+            fx = _get_fxs2(a, s2) # get x-ray form factor
+            # apply Mott formula to fx to get fe
+            return c1 * (a[13] - fx) / s2 # in A
+
+@njit(float64(float64[:], float64, float64, float64, float64, float64, float64, float64))
+def _get_mug(a, uiso, k, g, theta, phi, iyr, s2_min):
+    ct = np.cos(theta)
+    st = np.sin(theta)
+    cp = np.cos(phi)
+    twok = k+k
+    q = k * np.sqrt( 2.0 - 2.0 * ct )
+    qg = np.sqrt( twok*k + g*g - twok*(k*ct + g*cp*st) ) # this is for g = (gx, gy, 0)!
+    sg = 0.5 * g # g/2
+    sq = 0.5 * q # q/2
+    sqg = 0.5 * qg # qg/2
+    #
+    fq = _get_fes2(a, sq*sq, iyr, s2_min)
+    fqg = _get_fes2(a, sqg*sqg, iyr, s2_min)
+    dwfg = _get_dwfs(uiso, sg)
+    dwfq = _get_dwfs(uiso, sq)
+    dwfqg = _get_dwfs(uiso, sqg)
+    return fq*fqg * (dwfg - dwfq*dwfqg) * st
+
+@njit(float64(float64[:], float64[:], float64, float64[:], float64, float64, float64, float64))
+def _get_muga(a, u, k, g, theta, phi, iyr, s2_min):
+    ct = np.cos(theta)
+    st = np.sin(theta)
+    cp = np.cos(phi)
+    sp = np.sin(phi)
+    #ex = np.array([1., 0., 0.], dtype=float64)
+    #ey = np.array([0., 1., 0.], dtype=float64)
+    #ez = np.array([0., 0., 1.], dtype=float64)
+    #qx = ex * k * st * cp # qx vector
+    #qy = ey * k * st * sp # qy vector
+    #qz = ez * k * (1.0 - ct) # qz vector
+    q = np.array([st * cp, st * sp, 1.0 - ct]) * k # q vector
+    qg = q - g # q - g vector
+    sq2 = np.dot(q, q) * 0.25 # half length of q squared
+    sqg2 = np.dot(qg, qg) * 0.25 # half length of q - g squared
+    fq = _get_fes2(a, sq2, iyr, s2_min) # electron scattering factor at q
+    fqg = _get_fes2(a, sqg2, iyr, s2_min) # electron scattering factor at q - g
+    dwfg = _get_dwfaq(u, g) # debye waller factor at g
+    dwfq = _get_dwfaq(u, q) # debye waller factor at q
+    dwfqg = _get_dwfaq(u, qg) # debye waller factor at q - g
+    mug = fq * fqg * (dwfg - dwfq*dwfqg) * st
+    return mug
 
 
 class waki:
@@ -159,7 +334,8 @@ class waki:
             0.0,91.0,32.740208,21.973674,12.957398,3.6838320,15.744058,0.7095450,4.05088100,19.2315420,117.255006,0.07404000,3.88606600,91.0,2.084768702621660,
             0.0,92.0,15.679275,32.824305,13.660459,3.6872610,22.279435,0.0712060,0.68117700,18.2361570,112.500040,3.93032500,3.85444400,92.0,2.096286630784310]).reshape((2,15))
         
-
+    def get_dwf(self, uiso, s):
+        return _get_dwfs(uiso, s)
 
     def get_prm(self, Z):
         if Z <= 0 or Z > self.atty_max:
@@ -167,14 +343,15 @@ class waki:
         return self.tprm[Z]
 
     def get_fx(self, Z, s):
-        s2 = s**2
+        #s2 = s**2
         a = self.get_prm(Z)
-        fx = a[12]
-        for n in range(2,7):
-            m = n + 5
-            xbs = -a[m] * s2 # argument of exponential 
-            fx += a[n] * np.exp(xbs) # accumulation of a_i * exp(-b_i s^2)
-        return fx
+        return _get_fxs(a, s)
+        # fx = a[12]
+        # for n in range(2,7):
+        #     m = n + 5
+        #     xbs = -a[m] * s2 # argument of exponential 
+        #     fx += a[n] * np.exp(xbs) # accumulation of a_i * exp(-b_i s^2)
+        # return fx
 
     def get_fe(self, Z, s):
         '''
@@ -196,42 +373,43 @@ class waki:
                 atomic form factor for electron scattering in A
 
         '''
-        c1 = ec.EL_CFFA
-        s2 = s**2
-        al = self.iyr # inverse yukawa range in 1/A (only used for small s2 in ions to calculate 1/(s2+al**2))
+        #c1 = ec.EL_CFFA
+        #s2 = s**2
+        #al = self.iyr # inverse yukawa range in 1/A (only used for small s2 in ions to calculate 1/(s2+al**2))
         a = self.get_prm(Z)
-        if s2 < self.s2_min: # small s approximation
-            total = a[12] # c
-            for n in range(2,7):
-                total += a[n] # sum over all a_i
-            # if 0 == deltak = Z - sum a_i - c then we have a neutral atom
-            deltak = a[13] - total
-            deltak1 = float(np.round(deltak)) # integer part = ionic charge
-            # Z - sum_ai - INT( Z - sum_ai )
-            # deltak2 = deltak - deltak1   ! fractional part = table inconsistency
-            # calculate fe
-            total = 0.0
-            for n in range(2,7):
-                m = n + 5 # index for b_i
-                # approximative form of a_i * Exp[ -b_i * s^2 ] / s^2 for small s^2
-                #                       a_i + a_i * b_i * ( 1 - 0.5*b_i*s^2 )
-                total += a[n]*a[m]*(1.0 - 0.5*a[m]*s2)
-            # add ionic charge contribution (integer charge deltak1)
-            # total = total + deltak1/(s2 + al**2)  ! ionic charge contribution
-            total += deltak1/(s2 + al**2) # ionic charge contribution
-            # add a correction resolving the discontinuity at s2 = s20
-            # total = total + deltak2/s20
-            # apply prefactor  m0 e^2 / ( 2 h^2 ) / ( 4 Pi eps0 ) *10^-10 [ -> A^-1 ]
-            return c1 * total # in A
-        else: # large s range
-            if s2 > 36.0: # out of parameterization range ?
-	            # Large scattering vector limit
-                s2l = s2 + a[14]
-                return c1 * a[13] / s2l # in A
-            else: # scattering vector in parameterisation range
-                fx = self.get_fx(Z, s) # get x-ray form factor
-                # apply Mott formula to fx to get fe
-                return c1 * (a[13] - fx) / s2 # in A
+        return _get_fes(a, s, self.iyr, self.s2_min)
+        # if s2 < self.s2_min: # small s approximation
+        #     total = a[12] # c
+        #     for n in range(2,7):
+        #         total += a[n] # sum over all a_i
+        #     # if 0 == deltak = Z - sum a_i - c then we have a neutral atom
+        #     deltak = a[13] - total
+        #     deltak1 = float(np.round(deltak)) # integer part = ionic charge
+        #     # Z - sum_ai - INT( Z - sum_ai )
+        #     # deltak2 = deltak - deltak1   ! fractional part = table inconsistency
+        #     # calculate fe
+        #     total = 0.0
+        #     for n in range(2,7):
+        #         m = n + 5 # index for b_i
+        #         # approximative form of a_i * Exp[ -b_i * s^2 ] / s^2 for small s^2
+        #         #                       a_i + a_i * b_i * ( 1 - 0.5*b_i*s^2 )
+        #         total += a[n]*a[m]*(1.0 - 0.5*a[m]*s2)
+        #     # add ionic charge contribution (integer charge deltak1)
+        #     # total = total + deltak1/(s2 + al**2)  ! ionic charge contribution
+        #     total += deltak1/(s2 + al**2) # ionic charge contribution
+        #     # add a correction resolving the discontinuity at s2 = s20
+        #     # total = total + deltak2/s20
+        #     # apply prefactor  m0 e^2 / ( 2 h^2 ) / ( 4 Pi eps0 ) *10^-10 [ -> A^-1 ]
+        #     return c1 * total # in A
+        # else: # large s range
+        #     if s2 > 36.0: # out of parameterization range ?
+	    #         # Large scattering vector limit
+        #         s2l = s2 + a[14]
+        #         return c1 * a[13] / s2l # in A
+        #     else: # scattering vector in parameterisation range
+        #         fx = self.get_fx(Z, s) # get x-ray form factor
+        #         # apply Mott formula to fx to get fe
+        #         return c1 * (a[13] - fx) / s2 # in A
             
     def register_dwf(self, s, dwf, ip_kind='linear'):
         """
@@ -268,10 +446,10 @@ class waki:
             }
         self.d_dwf["func"] = interp1d(s, dwf, kind=ip_kind, copy=True, bounds_error=False, fill_value=0.0)
 
-    def get_dwf(self, s):
+    def get_rdwf(self, s):
         """
 
-        function get_dwf
+        function get_rdwf
         ----------------
 
             Returns a value of the Debye-Waller factors based on
@@ -290,38 +468,21 @@ class waki:
                 Debye-Waller factor DWF(s)
 
         """
-        assert "func" in self.d_dwf, 'Call member function register_dwf before using get_dwf.'
+        assert "func" in self.d_dwf, 'Call member function register_dwf before using get_rdwf.'
         return self.d_dwf["func"](s)
     
-    def get_mug(self, theta, phi):
-        ct = np.cos(theta)
-        st = np.sin(theta)
-        cp = np.cos(phi)
-        k = self.d_mug["integral"]["k"]
-        twok = k+k
-        q = k * np.sqrt( 2.0 - 2.0 * ct )
-        g = self.d_mug["integral"]["g"]
-        qg = np.sqrt( g*g + twok*k - twok*(k*ct + g*cp*st) )
-        sg = 0.5 * g # g/2
-        sq = 0.5 * q # q/2
-        sqg = 0.5 * qg # qg/2
-        Z = self.d_mug["integral"]["Z"]
-        fq = self.get_fe(Z, sq)
-        fqg = self.get_fe(Z, sqg)
-        dwfg = self.get_dwf(sg)
-        dwfq = self.get_dwf(sq)
-        dwfqg = self.get_dwf(sqg)
-        return fq*fqg * (dwfg - dwfq*dwfqg) * st
+    def get_mug(self, Z, k, g, uiso, theta, phi):
+        a = self.get_prm(Z)
+        return _get_mug(a, uiso, k, g, theta, phi, self.iyr, self.s2_min)
     
-    def get_fabs(self, Z, s, ekev, num_int=128):
+    def get_fabs(self, Z, s, uiso, ekev, num_int=128):
         """
 
         function get_fabs
         -----------------
 
-        Calculates an absorptive form factor.
-
-        Call register_dwf before using this function.
+        Calculates an absorptive form factor for an isotropic vibration.
+        An approximation is applied assuming that s is in-plane.
 
         Parameters
         ----------
@@ -329,6 +490,8 @@ class waki:
             atomic number to identify the electron scattering factor
         s : float
             scattering vector length in 1/A, s = q/2
+        uiso : float
+            thermal vibration parameter (MSD) in A^2
         ekev : float
             electron energy in keV
         num_int : int, default: 128
@@ -343,6 +506,7 @@ class waki:
         fa = 0.0
         kpre = 0.506773075855 # 2*pi * e / (h*c) *10^-7 [1/(A * kV)]
         k0 = kpre * np.sqrt((2 * ec.EL_E0KEV + ekev) * ekev) # scaled wave number in 1/A, effectively = 2 pi k0
+        k = k0 / (2.0 * np.pi)
         # fortran code: fa  = rc * rc * wakiabs(0.1*g, dwa, a2, k0/twopi) * k0
         g = 2 * s
         a = self.get_prm(Z)
@@ -354,14 +518,14 @@ class waki:
         p1 = 2.0 # stepping power for theta
         n2 = (num_int >> 1) # phi samples
         p2 = 1.0 # stepping power for phi
-        self.d_mug["integral"] = {
-            "ekev" : ekev,
-            "k" : k0,
-            "g" : g,
-            "s" : s,
-            "Z" : Z,
-            "a" : a,
-        }
+        # self.d_mug["integral"] = {
+        #     "ekev" : ekev,
+        #     "k" : k, # the actual 1/lambda used in mug
+        #     "g" : g,
+        #     "s" : s,
+        #     "Z" : Z,
+        #     "a" : a,
+        # }
         cx1 = 1.0 / (n1-1)
         tx1 = a1 + (b1-a1) * (np.arange(0, n1) * cx1)**p1
         cx2 = 1.0 / (n2-1)
@@ -373,7 +537,8 @@ class waki:
             phi = tx2[i2]
             for i1 in range(0, n1):
                 theta = tx1[i1]
-                ymug[i2,i1] = self.get_mug(theta, phi)
+
+                ymug[i2,i1] = _get_mug(a, uiso, k, g, theta, phi, self.iyr, self.s2_min)
 
         fa = 2.0 * numint2d(ymug, tx1, tx2, n1, n2) * k0 / (4 * np.pi)
 
@@ -381,3 +546,63 @@ class waki:
 
         return fa
             
+    def get_fabsani(self, Z, g, umat, ekev, num_int=128):
+        """
+
+        function get_fabsani
+        -----------------
+
+        Calculates an absorptive form factor for anisotropic vibrations.
+
+        Parameters
+        ----------
+        Z : int
+            atomic number to identify the electron scattering factor
+        g : float(3)
+            (gx, gy, gz) input scattering vector length in 1/A
+        umat : float(6)
+            thermal vibration parameters (uxx, uyy, uzz, uxy, uxz, uyz) in A^2
+        ekev : float
+            electron energy in keV
+        num_int : int, default: 128
+            number of samples for the numerical integration
+
+        Returns
+        -------
+        np.float64
+            absorptive form factor for (gx, gy)
+
+        """
+        fa = 0.0
+        kpre = 0.506773075855 # 2*pi * e / (h*c) *10^-7 [1/(A * kV)]
+        k0 = kpre * np.sqrt((2 * ec.EL_E0KEV + ekev) * ekev) # scaled wave number in 1/A, effectively = 2 pi k0
+        k = k0 / (2.0 * np.pi)
+        vg = np.array(g, dtype=np.float64)
+        a = self.get_prm(Z)
+        a1 = 0.0
+        b1 = np.pi
+        a2 = 0.0
+        b2 = 2 * np.pi
+        n1 = num_int # theta samples
+        p1 = 2.0 # stepping power for theta
+        n2 = (num_int >> 1) # phi samples
+        p2 = 1.0 # stepping power for phi
+        cx1 = 1.0 / (n1-1)
+        tx1 = a1 + (b1-a1) * (np.arange(0, n1) * cx1)**p1
+        cx2 = 1.0 / (n2-1)
+        tx2 = a2 + (b2-a2) * (np.arange(0, n2) * cx2)**p2
+
+        ymug = np.zeros((n2,n1), dtype=np.float64)
+
+        for i2 in range(0, n2):
+            phi = tx2[i2]
+            for i1 in range(0, n1):
+                theta = tx1[i1]
+
+                ymug[i2,i1] = _get_muga(a, umat, k, vg, theta, phi, self.iyr, self.s2_min)
+
+        fa = numint2d(ymug, tx1, tx2, n1, n2) * k0 / (4 * np.pi)
+
+        # towards a cross-section, this needs scaling with lambda^2 gamma^2
+
+        return fa

@@ -12,6 +12,37 @@ published under the GNU General Publishing License, version 3
 """
 
 import numpy as np
+import numba as nb
+
+@nb.njit(nb.int32(nb.float64[:,::1], nb.float64[::1], nb.float64[:,::1], nb.int32))
+def dcgls(a, b, x, itmax):
+    '''
+    Performs a conjugate gradient least square iteration solving for x
+    in b = a.x with itmax iterations.
+    Returns x with each iteration.
+    '''
+    if itmax < 1:
+        return 1
+    eps = np.float64(1.E-30)
+    x0 = np.zeros_like(x[0])
+    #x0[:] = np.random.rand(len(x0))
+    r0 = b - np.dot(a, x0)
+    at = np.transpose(a)
+    d0 = np.dot(at, r0)
+    for k in range(0, itmax):
+        atr = np.dot(at, r0)
+        ad = np.dot(a, d0)
+        l2atr = np.dot(atr, atr)
+        alpha = l2atr / np.sqrt(np.dot(ad, ad)**2 + eps)
+        x0 = x0 + alpha * d0
+        x[k, :] = x0[:]
+        r0 = r0 - alpha * np.dot(a, d0)
+        atrp = np.dot(at, r0)
+        beta = np.dot(atrp, atrp) / np.sqrt(l2atr**2 + eps)
+        d0 = atrp + beta * d0
+        #print(k, alpha, beta)
+    return 0
+
 
 class LeastSquareSolution:
     '''

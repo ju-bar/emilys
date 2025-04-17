@@ -828,6 +828,7 @@ class supercell:
         l_conf = np.sqrt(np.dot(confinement,confinement)) # get confinement vector length
         if l_conf < eps: # zero confinement vector -> mode fallback to 3
             imode = 3
+            n_conf = np.zeros_like(confinement)
         else: # finite confinement vector
             n_conf = np.round(confinement / l_conf, 6) # confinement normal vector rounded to 6 digits
         if (imode < 1) or (imode > 3): imode = 3 # internal mode switch limited to 1, 2, or 3
