@@ -1245,28 +1245,37 @@ class supercell:
                 ati = self.l_atoms[i]
                 b_add = True # assume adding and perform logical AND operations to turn it off in case of failing conditions
                 for sel_key in dic_range: # go through all conditions
-                    min_val = min(dic_range[sel_key])
-                    max_val = max(dic_range[sel_key])  
-                    if sel_key == 'rng_Z': # atomic number range condition
-                        b_add &= ((ati.Z >= min_val) and (ati.Z < max_val))
                     if sel_key == 'lst_Z': # atomic number list condition
                         b_add &= (ati.Z in dic_range[sel_key])
-                    if sel_key == 'rng_charge': # charge range
-                        b_add &= ((ati.charge >= min_val) and (ati.charge < max_val))
-                    if sel_key == 'rng_uiso': # uiso range
-                        b_add &= ((ati.uiso >= min_val) and (ati.uiso < max_val))
-                    if sel_key == 'rng_occ': # occupancy range
-                        b_add &= ((ati.occ >= min_val) and (ati.occ < max_val))
-                    if sel_key == 'rng_pos_a': # position x range
-                        b_add &= ((ati.pos[0] >= min_val) and (ati.pos[0] < max_val))
-                    if sel_key == 'rng_pos_b': # position y range
-                        b_add &= ((ati.pos[1] >= min_val) and (ati.pos[1] < max_val))
-                    if sel_key == 'rng_pos_c': # position z range
-                        b_add &= ((ati.pos[2] >= min_val) and (ati.pos[2] < max_val))
+                        continue
                     if sel_key == 'rng_pos_r': # distance in A
                         dpos = np.dot(mb0, ati.pos) - pos_ref
                         sd = np.dot(dpos, dpos) # square distance [A^2]
                         b_add &= (sd <= sdthr)
+                        continue
+                    min_val = min(dic_range[sel_key])
+                    max_val = max(dic_range[sel_key])  
+                    if sel_key == 'rng_Z': # atomic number range condition
+                        b_add &= ((ati.Z >= min_val) and (ati.Z < max_val))
+                        continue
+                    if sel_key == 'rng_charge': # charge range
+                        b_add &= ((ati.charge >= min_val) and (ati.charge < max_val))
+                        continue
+                    if sel_key == 'rng_uiso': # uiso range
+                        b_add &= ((ati.uiso >= min_val) and (ati.uiso < max_val))
+                        continue
+                    if sel_key == 'rng_occ': # occupancy range
+                        b_add &= ((ati.occ >= min_val) and (ati.occ < max_val))
+                        continue
+                    if sel_key == 'rng_pos_a': # position x range
+                        b_add &= ((ati.pos[0] >= min_val) and (ati.pos[0] < max_val))
+                        continue
+                    if sel_key == 'rng_pos_b': # position y range
+                        b_add &= ((ati.pos[1] >= min_val) and (ati.pos[1] < max_val))
+                        continue
+                    if sel_key == 'rng_pos_c': # position z range
+                        b_add &= ((ati.pos[2] >= min_val) and (ati.pos[2] < max_val))
+                        continue
                 if b_add: # all conditions fulfilled ...
                     l_atoms_idx.append(i) # add atom index to list
         return l_atoms_idx
