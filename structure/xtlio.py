@@ -104,6 +104,58 @@ def make_g_matrix(g1, g2, imax):
                 l_l.append(lv)
     return l_g
 
+def shorten_atom_keys(atom_dict):
+    """
+    Shortens dictionary keys representing atom types with optional descriptors.
+
+    Keys in the input dictionary start with an atomic symbol (e.g., 'Dy') and may
+    include extra descriptors separated by underscores (e.g., 'Dy_addition123').
+    This function renames keys by:
+        - Keeping only the atomic symbol (everything before the first underscore).
+        - If the symbol is unique among keys, it remains unchanged (e.g., 'Dy').
+        - If the symbol appears multiple times, keys are renamed to 'Symbol_1', 'Symbol_2', etc.
+
+    Example:
+        Input:
+            {
+                'Dy_addition2138': {...},
+                'Dy_addition346': {...},
+                'H': {...}
+            }
+        Output:
+            {
+                'Dy_1': {...},
+                'Dy_2': {...},
+                'H': {...}
+            }
+
+    Parameters:
+        atom_dict (dict): Dictionary with complex keys representing atoms.
+
+    Returns:
+        dict: A new dictionary with simplified, consistent keys.
+    """
+    from collections import defaultdict
+
+    grouped = defaultdict(list)
+    for key in atom_dict:
+        base = key.split('_')[0]
+        grouped[base].append(key)
+
+    new_dict = {}
+    for atom_symbol, keys in grouped.items():
+        if len(keys) == 1:
+            # Only one key: use the plain symbol
+            new_dict[atom_symbol] = atom_dict[keys[0]]
+        else:
+            for idx, old_key in enumerate(sorted(keys), start=1):
+                new_key = f"{atom_symbol}_{idx}"
+                new_dict[new_key] = atom_dict[old_key]
+
+    return new_dict
+
+
+
 def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
     """
 
@@ -157,7 +209,7 @@ def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
             sc.a0[0], sc.a0[1], sc.a0[2], sc.angles[0], sc.angles[1], sc.angles[2]))
         if 'ht' in d_adds.keys(): # add high tension line
             file_out.write("{:.5f}\n".format(d_adds['ht']))
-        d = sc.get_type_dict(None, l_type_name_adds)
+        d = shorten_atom_keys(sc.get_type_dict(None, l_type_name_adds))
         natty = len(d.keys())
         file_out.write("{:d}\n".format(natty)) # number of atom types
         for satty in d.keys():
@@ -166,18 +218,24 @@ def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
             # atom type paramaters
             if ionic:
                 sion = ato.get_str_from_charge(atty["ion"])
-                file_out.write("{:<6d} {:<10.3f} {:<10.3f} {:<11.5E}  {:s}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"],sion)) # number of atom types
+                file_out.write("{:<6d} {:<10.3f} {:<10.3f} {:<11.5E}  {:s}\n".format(
+                    len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"],sion)
+                    ) # number of atom types
             else:
-                file_out.write("{:<6d} {:<10.3f} {:<10.3f} {:<11.5E}\n".format(len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"])) # number of atom types
+                file_out.write("{:<6d} {:<10.3f} {:<10.3f} {:<11.5E}\n".format(
+                    len(atty["sites"]),atty["Z"],atty["occ"],atty["uiso"])
+                    ) # number of atom types
             # atom type sites
             for pos in atty["sites"]:
-                file_out.write("       {:<10.6f} {:<10.6f} {:<10.6f}\n".format(pos[0], pos[1], pos[2]))
+                file_out.write("       {:<10.6f} {:<10.6f} {:<10.6f}\n".format(
+                    pos[0], pos[1], pos[2]))
         if 'bragg' in d_adds.keys(): # add scan and bragg list
             d_b = d_adds['bragg']
             vsz = d_b['sz']
             vsx = d_b['sx']
             vsy = d_b['sy']
             gi_lim = 0
+            g_list = []
             if (('g1' in d_b.keys()) and ('g2' in d_b.keys()) and ('gi_max' in d_b.keys())):
                 vg1 = d_b['g1']
                 vg2 = d_b['g2']
@@ -186,13 +244,15 @@ def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
                 if 'gi_lim' in d_b.keys():
                     gi_lim = d_b['gi_lim']
                 g_list = make_g_matrix(vg1, vg2, gi_max)
-            file_out.write("{:d}\n".format(min(gi_lim, len(g_list))))
-            file_out.write("   {:d}   {:d}   {:d}\n".format(vsz[0],vsz[1],vsz[2]))
-            file_out.write("   {:d}   {:d}   {:d}\n".format(vsx[0],vsx[1],vsx[2]))
-            file_out.write("   {:d}   {:d}   {:d}\n".format(vsy[0],vsy[1],vsy[2]))
-            for i in range(0, min(gi_lim, len(g_list))):
-                vg = g_list[i]
-                file_out.write("   {:d}   {:d}   {:d}\n".format(vg[0],vg[1],vg[2]))
+            num_g =  min(gi_lim, len(g_list))
+            if num_g > 0:
+                file_out.write(f"{num_g:d}\n")
+                file_out.write(f"   {vsz[0]:d}   {vsz[1]:d}   {vsz[2]:d}\n")
+                file_out.write(f"   {vsx[0]:d}   {vsx[1]:d}   {vsx[2]:d}\n")
+                file_out.write(f"   {vsy[0]:d}   {vsy[1]:d}   {vsy[2]:d}\n")
+                for i in range(0, num_g):
+                    vg = g_list[i]
+                    file_out.write(f"   {vg[0]:d}   {vg[1]:d}   {vg[2]:d}\n")
         file_out.write("\n")
         file_out.close()
     return io_err

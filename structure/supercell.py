@@ -315,14 +315,17 @@ class supercell:
                 wpos = np.array([0.,0.,0.])
                 if periodic:
                     for j in range(0,3):
-                        if dpos[j] < -0.5: wpos[j] = 1.
-                        if dpos[j] >= 0.5: wpos[j] = -1.
+                        if dpos[j] < -0.5:
+                            wpos[j] = 1.
+                        if dpos[j] >= 0.5:
+                            wpos[j] = -1.
                 bpos = apos + wpos
                 dpos = np.dot(mb0, bpos - pos)
                 if np.dot(dpos,dpos) < sdthr:
                     pos = (pos * npos + bpos) / (npos+1)
                     npos += 1
-        if periodic: return np.round(pos % 1.0, 6)
+        if periodic:
+            return np.round(pos % 1.0, 6)
         return np.round(pos, 6)
 
     def get_type_dict(self, l_atoms_idx=None, l_type_name_adds=None):

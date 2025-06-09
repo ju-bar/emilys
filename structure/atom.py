@@ -26,15 +26,16 @@ def get_str_from_charge(charge, digits=2):
     s2 = sacrg[lsa-digits:]
     if int(s1)>0 or int(s2)>0:
         sgn = '+'
-        if charge < 0.: sgn = '-'
+        if charge < 0.:
+            sgn = '-'
     if int(s2) > 0:
         s2 = '.' + s2.rstrip('0')
     else:
         s2 = ''
-    sout = ''
+    out = ''
     if int(s1) > 0 or len(s2) > 0:
-        sout = s1 + s2 + sgn
-    return sout
+        out = s1 + s2 + sgn
+    return out
 
 def get_symb_charge(s):
     """
@@ -84,7 +85,9 @@ class atom:
 
     """
 
-    def __init__(self, Z=1, pos=np.array([0.,0.,0.]), uiso=0.006332574, occ=1., charge=0., faniso=np.array([0.,0.,0.])):
+    def __init__(self, Z=1, pos=np.array([0.,0.,0.]), 
+                 uiso=0.006332574, occ=1., 
+                 charge=0., faniso=np.array([0.,0.,0.])):
         self.Z = Z
         self.pos = pos
         self.uiso = uiso
@@ -92,7 +95,7 @@ class atom:
         self.charge = charge
         self.faniso = faniso
 
-    def get_type_name(self, l_type_name_adds = []):
+    def get_type_name(self, l_type_name_adds = None):
         """
         
         Returns a string for an atom type name with possible additions
@@ -110,16 +113,18 @@ class atom:
 
         """
         s = atty.atom_type_symbol[self.Z]
-        scrg = ''
-        socc = ''
-        suiso = ''
-        for sadd in l_type_name_adds:
-            if sadd == 'ion':
-                scrg = get_str_from_charge(self.charge) 
-            if sadd =='occ' :
-                socc = '_occ{:.3f}'.format(self.occ)
-            if sadd == 'uiso':
-                suiso = '_uiso{:.6f}'.format(self.uiso)
-        return s + scrg + socc + suiso
+        if l_type_name_adds is None:
+            return s
+        charge = ''
+        occupancy = ''
+        msd = ''
+        for addition in l_type_name_adds:
+            if addition == 'ion':
+                charge = get_str_from_charge(self.charge)
+            if addition =='occ' :
+                occupancy = f'_occ{self.occ:.3f}'
+            if addition == 'uiso':
+                msd = f'_uiso{self.uiso:.6f}'
+        return s + charge + occupancy + msd
 
     
