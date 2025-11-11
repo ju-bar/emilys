@@ -74,7 +74,6 @@ published under the GNU General Publishing License, version 3
 """
 
 import re
-import copy
 import numpy as np
 from emilys.structure.supercell import supercell
 import emilys.structure.atom as ato
@@ -156,7 +155,7 @@ def shorten_atom_keys(atom_dict):
 
 
 
-def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
+def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}, newline=None):
     """
 
     Writes atomic structure data in XTL file format.
@@ -189,6 +188,8 @@ def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
                 'gi_max' : max. bragg order to include, e.g. 5,
                     this spans a matrix by g1 and g2 up to the given number of multiples
                 'gi_lim' : limits the length of the bragg vector list
+        newline : str | None = None
+            line termination
     
     Returns
     -------
@@ -203,7 +204,7 @@ def write_XTL(sc, file, l_type_name_adds = [], d_adds = {}):
     assert isinstance(file, str), 'This expects that file is input of type str'
     if 'ion' in l_type_name_adds:
         ionic = True
-    with open(file, "w") as file_out:
+    with open(file, "w", newline=newline) as file_out:
         file_out.write(sc.get_composition_str() + " (xtlio)\n")
         file_out.write("{:<11.6f}{:<11.6f}{:<11.6f}{:<10.4f}{:<10.4f}{:<10.4f}\n".format(
             sc.a0[0], sc.a0[1], sc.a0[2], sc.angles[0], sc.angles[1], sc.angles[2]))

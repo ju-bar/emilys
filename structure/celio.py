@@ -120,35 +120,39 @@ def read_CEL(file, debug=False):
         emilys.structure.supercell.supercell
 
     """
-    assert type(file) is str, "This expects a string as input parameter."
+    assert isinstance(file, str), "This expects a string as input parameter."
     # open the file and read the lines
-    with open(file) as file_in:
-        if debug: print('dbg (read_cel): opened file [' + file + ']')
-        lines = []
-        for line in file_in:
-            lines.append(line)
-        file_in.close()
-    if debug: print('dbg (read_cel): read ', len(lines),' lines of text.')
+    with open(file) as f:
+        if debug:
+            print(f'dbg (read_cel): opened file [{file}]')
+        lines = f.readlines()
+    if debug:
+        print(f'dbg (read_cel): read {len(lines)} lines of text.')
     assert len(lines) > 2, "The input file doesn't contain sufficient number of text lines."
     # create a supercell object
     sc = supercell()
     # process the cell parameters
     l_cmp = re.split(' +|,|;|\t+', lines[1].strip()) # decompose to list of string
     assert len(l_cmp) > 6, "The second line of the input file could not be split into >6 items."
-    if debug: print('dbg (read_cel): supercell input line: ', l_cmp)
+    if debug:
+        print(f'dbg (read_cel): supercell input line: {l_cmp}')
     sc.a0 = np.array([float(l_cmp[1]),float(l_cmp[2]),float(l_cmp[3])]) * 10. # from nm to Angst
-    if debug: print('dbg (read_cel): supercell size [A]: a = {:.5f}, a = {:.5f}, c = {:.5f}'.format(*sc.a0))
+    if debug:
+        print(f'dbg (read_cel): supercell size [A]: a = {sc.a0[0]:.5f}, a = {sc.a0[1]:.5f}, c = {sc.a0[2]:.5f}')
     sc.angles = np.array([float(l_cmp[4]),float(l_cmp[5]),float(l_cmp[6])])
-    if debug: print('dbg (read_cel): supercell angles [deg]: alpha = {:.4f}, beta = {:.4f}, gamma = {:.4f}'.format(*sc.angles))
+    if debug:
+        print(f'dbg (read_cel): supercell angles [deg]: alpha = {sc.angles[0]:.4f}, beta = {sc.angles[1]:.4f}, gamma = {sc.angles[2]:.4f}')
     # process the lines
     for i in range(2, len(lines)):
-        if '*' in lines[i]: break # stop reading due to end of structure character
+        if '*' in lines[i]:
+            break # stop reading due to end of structure character
         at_in = set_atom_str_CEL(lines[i])
         sc.l_atoms.append(at_in)
-    if debug: print('dbg (read_cel): added ', len(sc.l_atoms), ' atoms to the supercell.')
+    if debug:
+        print(f'dbg (read_cel): added {len(sc.l_atoms)} atoms to the supercell.')
     return sc
 
-def write_CEL(sc, file):
+def write_CEL(sc, file, newline=None):
     """
 
     Writes atomic structure data in CEL file format.
@@ -160,6 +164,8 @@ def write_CEL(sc, file):
             Supercell data the should be written to file.
         file : str
             File name
+        newline : str | None = None
+            line termination
     
     Returns
     -------
@@ -171,7 +177,7 @@ def write_CEL(sc, file):
     io_err = 0
     assert isinstance(sc, supercell), 'This expects that sc is input of type emilys.structure.supercell.supercell'
     assert isinstance(file, str), 'This expects that file is input of type str'
-    with open(file, "w") as file_out:
+    with open(file, "w", newline=newline) as file_out:
         file_out.write("# EMILYS celio of [" + sc.get_composition_str() + "] \n")
         lat_c = sc.a0 * 0.1 # from Angst to nm
         file_out.write(" 0  {:.5f}  {:.5f}  {:.5f}  {:.4f}  {:.4f}  {:.4f} \n".format(

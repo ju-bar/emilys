@@ -14,6 +14,8 @@ published under the GNU General Publishing License, version 3
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
 import emilys.structure.atomtype as aty
 from emilys.structure.atom import atom, get_str_from_charge
 from copy import deepcopy
@@ -1036,6 +1038,52 @@ class supercell:
                     l_close.append(l_close_cur) # append to output list
                     if debug: print('added list', l_close_cur)
         return l_close
+    
+    def list_neigbors(self, idx: int, periodic: bool = True, 
+                      max_dist: float | None = None,
+                      allowed_Z: list | None = None):
+        """
+        Lists neighbors to the atom with index idx sorted by distance.
+
+        Parameters
+        ----------
+            idx : int
+                Index of the reference atom in member l_atoms.
+            periodic : bool
+                (optional) Flags use of periodic boundary conditions.
+            max_dist : float, default: None
+                (optional) maximum distance to include in the analysis in physical length units used by the supecell
+            allowed_Z : list, default: None
+                (optional) Filter for allowed Z considered as neigbors
+
+        Returns
+        -------
+            list, list
+                List of indices and list of distances, sorted by ascending
+                distance in physical length units used by the supercell.
+        """
+        m = len(self.l_atoms) # number of atoms in the supercell
+        assert idx < m, "Reference atom index is out of range."
+        mb0 = self.get_basis().T # get the transformation matrix to transform from fractional to physical coordinates
+        pos_ref = self.l_atoms[idx].pos
+        neighbors = [] # init neighbors list
+        for jdx in range(m): # collect distances
+            if jdx == idx:
+                continue
+            pos_test = self.l_atoms[jdx].pos
+            if periodic: # fractional distance vector across periodic boundary conditions
+                fdist = ((pos_test - pos_ref + 0.5) % 1.0 ) - 0.5
+            else: # fractional distance vector, no periodic boundary
+                fdist = pos_test - pos_ref
+            vec_dist = np.dot(mb0, fdist) # distance vector in physical coordinates
+            dist = np.linalg.norm(vec_dist) # real distance
+            if max_dist is None or dist <= max_dist:
+                if allowed_Z is None or self.l_atoms[jdx].Z in allowed_Z:
+                    neighbors.append((jdx, dist))
+        # Sort all neighbors by distance
+        neighbors.sort(key=lambda x: x[1])
+        l_atom_idx, l_dist = zip(*neighbors) if neighbors else ([], [])
+        return list(l_atom_idx), list(l_dist)
 
     def check_duplicate_atom(self, ato, proximity=1.E-3, periodic=True):
         n = len(self.l_atoms)
@@ -1369,3 +1417,102 @@ class supercell:
         if len(l_atoms_occ) > 0: # append fully occupied atoms
             self.l_atoms = self.l_atoms + l_atoms_occ
         return
+    
+    def visualize_structure_2d(self, plane='xy', atom_radius=0.3, figsize=(8, 8), invert_y=False):
+        """
+        Visualizes a structure in 2D orthographic projection with depth-based transparency.
+
+        Parameters:
+            plane : 'xy', 'xz', or 'yz' — plane to project onto
+            atom_radius : float — radius scale of atoms (in Å)
+            figsize : tuple — matplotlib figure size
+            invert_y : boolean - flags inversion of the y axis
+        """
+        # Extract lattice constants (assume orthorhombic)
+        a, b, c = list(self.a0)
+
+        # Choose 2D projection axes
+        plane = plane.lower()
+        if plane == 'xy':
+            proj_indices = (0, 1)
+            limits = (a, b)
+        elif plane == 'xz':
+            proj_indices = (0, 2)
+            limits = (a, c)
+        elif plane == 'yz':
+            proj_indices = (1, 2)
+            limits = (b, c)
+        else:
+            raise ValueError("Plane must be 'xy', 'xz', or 'yz'")
+
+        # Determine the depth index (the axis orthogonal to the view)
+        depth_index = list({0, 1, 2} - set(proj_indices))[0]
+        depths = np.array([atom.pos[depth_index] for atom in self.l_atoms])
+
+        # Normalize depth values to [0, 1]
+        min_depth = depths.min()
+        max_depth = depths.max()
+        depth_range = max_depth - min_depth if max_depth != min_depth else 1.0
+
+        # Pair atoms with their normalized depth and sort back-to-front
+        sorted_atoms = sorted(
+            ((atom, (atom.pos[depth_index] - min_depth) / depth_range) for atom in self.l_atoms),
+            key=lambda x: x[1]  # sort by normalized depth
+        )
+
+        # Setup figure
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Color palette for atom types
+        color_map = {
+            'H': 'lightgray',
+            'C': 'black',
+            'N': 'blue',
+            'O': 'red',
+            'F': 'green',
+            'S' : 'yellow',
+            'Si': 'orange',
+            'Ti': 'lightblue',
+            'Ni': 'gray',
+            'Sr': 'lightgreen',
+            'default': 'cornflowerblue'
+        }
+
+        # Define transparency range
+        min_alpha = 0.2
+        max_alpha = 0.8
+
+        # Draw atoms
+        for catom, depth_norm in sorted_atoms:
+            radius = 0.5 * atom_radius + catom.Z * atom_radius / 50
+            pos_frac = catom.pos
+            element = catom.get_type_name()
+            x, y = pos_frac[proj_indices[0]], pos_frac[proj_indices[1]]
+
+            # Convert to Cartesian
+            if plane == 'xy':
+                x *= a
+                y *= b
+            elif plane == 'xz':
+                x *= a
+                y *= c
+            elif plane == 'yz':
+                x *= b
+                y *= c
+
+            color = color_map.get(element, color_map['default'])
+            alpha = min_alpha + (1 - depth_norm) * (max_alpha - min_alpha)
+
+            circle = Circle((x, y), radius=radius,
+                            facecolor=color, edgecolor='black', linewidth=0.5, alpha=alpha)
+            ax.add_patch(circle)
+
+        ax.set_xlim(0, limits[0])
+        ax.set_ylim(0, limits[1])
+        ax.yaxis.set_inverted(invert_y)
+        ax.set_aspect('equal', 'box')
+        ax.set_xlabel(f"{plane[0]} (Å)")
+        ax.set_ylabel(f"{plane[1]} (Å)")
+        ax.set_title(f"2D projection: {plane.upper()} (depth shading)")
+        plt.tight_layout()
+        plt.show()

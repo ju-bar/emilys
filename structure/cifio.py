@@ -653,20 +653,21 @@ def make_CIF_symop_table(sgn, subgn=1, debug=False):
     d = {}
     with importlib.resources.open_binary(emilys.structure, 'sgops.json') as f_sg:
         d_sg = json.load(f_sg)
-    if type(sgn) == int:
+    if isinstance(sgn, int):
         str_sgn = str(sgn)
         str_sub = str(subgn)
-    elif type(sgn) == str:
-        bfoun = False
+    elif isinstance(sgn, str):
+        found = False
         for sg in d_sg:
             for sgsub in d_sg[sg]:
                 str_sub_name = str(d_sg[sg][sgsub]['name']).replace(" ","")
                 if str_sub_name == sgn:
                     str_sgn = sg
                     str_sub = sgsub
-                    bfound = True
+                    found = True
                     break
-            if bfound: break
+            if found:
+                break
     # assume str_sgn and str_sub are tags of the loaded table
     if str_sgn in d_sg:
         du = d_sg[str_sgn]
@@ -681,20 +682,23 @@ def make_CIF_symop_table(sgn, subgn=1, debug=False):
             for sorg in dus_org:
                 a_org = np.array(get_CIF_symop(dus_org[sorg])) # get shift op as numpy
                 v_shift = a_org[3] # shift vector
-                if debug: print('dbg (make_CIF_symop_table): ', sorg, ':', dus_org[sorg], ' -> ', v_shift)
+                if debug:
+                    print(f'dbg (make_CIF_symop_table): {sorg}:{dus_org[sorg]} -> {v_shift}')
                 for sop in dus_ops:
                     a_op = np.array(get_CIF_symop(dus_ops[sop])) # get transformation op as numpy array
-                    if debug: print('dbg (make_CIF_symop_table): ', sop, ':', dus_ops[sop], ' -> ', a_op)
+                    if debug:
+                        print(f'dbg (make_CIF_symop_table): {sop}:{dus_ops[sop]} -> {a_op}')
                     a_op[3,:] = np.mod(a_op[3,:] + v_shift[:], 1.0) # offset shift and mod 1
                     sop_offset = get_symop_str(a_op[0:3], a_op[3]) # get the updated operation str with offset
                     iop += 1
-                    if debug: print('dbg (make_CIF_symop_table): => ', iop, ': ', sop_offset)
+                    if debug:
+                        print(f'dbg (make_CIF_symop_table): => {iop}: {sop_offset}')
                     d['data'].append([str(iop), sop_offset])
         else:
-            print('Error (make_CIF_symop_table): Unknown sub-group (', subgn, ') in space group number: ', sgn)    
+            print(f'Error (make_CIF_symop_table): Unknown sub-group ({subgn}) in space group number: {sgn}')    
         
     else:
-        print('Error (make_CIF_symop_table): Unknown space group number: ', sgn)
+        print(f'Error (make_CIF_symop_table): Unknown space group number: {sgn}')
     return d
 
 
@@ -720,10 +724,11 @@ def read_CIF(file, debug=False):
 
     """
     d_cif = {}
-    assert type(file) is str, "This expects a string as input parameter."
+    assert isinstance(file, str), "This expects a string as input parameter."
     # open the file and read the lines
     with open(file) as file_in:
-        if debug: print('dbg (read_cif): opened file [' + file + ']')
+        if debug:
+            print(f'dbg (read_cif): opened file [{file}]')
         lines = []
         for line in file_in:
             icomm = line.find('#')
@@ -841,7 +846,7 @@ def write_CIF_qm(s, force=False):
             return "'" + rs + "'" # put in single quotes
     return rs
 
-def write_CIF(d_cif, file, debug=False):
+def write_CIF(d_cif, file, newline=None, debug=False):
     """
 
     Writes a CIF file from dictionary information.
@@ -853,6 +858,8 @@ def write_CIF(d_cif, file, debug=False):
             Dictionary with CIF information
         file : str
             File name
+        newline : str | None = None
+            line termination
         debug : boolean, default=False
             Switch debug print
 
@@ -865,7 +872,7 @@ def write_CIF(d_cif, file, debug=False):
     """
     io_err = 0
     assert isinstance(file, str), 'This expects that file is input of type str'
-    with open(file, "w") as file_out:
+    with open(file, "w", newline=newline) as file_out:
         if debug: print('dbg (write_cif): opened file ' + file + 'for writing')
         file_out.write("# (cifio)\n")
         if debug: print('dbg (write_cif): writing basic cell information')
@@ -1148,9 +1155,9 @@ def supercell_to_CIF(sc):
         ],
         'data' : []
     }
-    for ato in sc.l_atoms:
-        str_sy = ato.get_type_name() # pure symbol
-        str_symb = ato.get_type_name(l_type_name_adds=['ion']) #  symbol with oxidation state
+    for atom in sc.l_atoms:
+        str_sy = atom.get_type_name() # pure symbol
+        str_symb = atom.get_type_name(l_type_name_adds=['ion']) #  symbol with oxidation state
         # generate the label number
         isymb = l_types.index(str_symb)
         nlabel = 0
@@ -1160,7 +1167,7 @@ def supercell_to_CIF(sc):
                 if i == isymb:
                     break
         str_label = str_sy + str(nlabel)
-        d['tables']['2']['data'].append([str_label, str_symb, np.round(ato.occ,6), 
-            np.round(ato.pos[0],6), np.round(ato.pos[1],6), np.round(ato.pos[2],6),
-            'Uiso', np.round(ato.uiso,6)])
+        d['tables']['2']['data'].append([str_label, str_symb, np.round(atom.occ,6), 
+            np.round(atom.pos[0],6), np.round(atom.pos[1],6), np.round(atom.pos[2],6),
+            'Uiso', np.round(atom.uiso,6)])
     return d

@@ -13,6 +13,7 @@ published under the GNU General Publishing License, version 3
 #
 from numba import njit # include compilation support
 import numpy as np # include numeric functions
+from emilys.image.kernels import source_distribution
 #
 def image_load(str_file_name, nx, ny, datatype):
     '''
@@ -391,3 +392,41 @@ def convolute_img_ser(img_ser, kernel):
         data_ft = np.fft.fft2(img_ser[iimg])
         img_out[iimg,:,:] = np.fft.ifft2(data_ft * kernel_ft.conjugate()).real # warning this assumes real valued image input
     return img_out
+
+def imgpol(img, dim_out, tiling=(1, 1), size=(1.0, 1.0), source_size=1.0, source_type=0):
+    """
+    Process a 2D image by tiling, resampling, and optional convolution.
+
+    Parameters:
+    - img: 2D numpy array, input image
+    - dim_out: tuple (ny, nx), desired output shape in pixels
+    - tiling: tuple (ty, tx), how many times to tile the input image
+    - size: tuple (sy, sx), physical size of the input image (before tiling)
+    - source_size: float, physical size of source for convolution (same units as 'size')
+    - source_type: int, if >0, apply convolution using source distribution
+
+    Returns:
+    - 2D numpy array: processed image
+    """
+    # Tile the image if requested
+    if tiling[0] > 1 or tiling[1] > 1:
+        imgtmp1 = np.tile(img, tiling)
+    else:
+        imgtmp1 = np.asarray(img)
+
+    # Resample if needed
+    if tuple(imgtmp1.shape) != tuple(dim_out):
+        imgtmp2 = image_resample_ft(imgtmp1, dim_out)
+    else:
+        imgtmp2 = imgtmp1
+
+    # Compute output sampling (in physical units)
+    size_out = np.array(size) * np.array(tiling)
+    samp_out = size_out / np.array(dim_out)
+
+    # Convolve if source_type > 0
+    if source_type > 0:
+        krn = source_distribution(dim_out, samp_out, source_size, source_type)
+        return convolute_2d(imgtmp2, krn).real
+    else:
+        return imgtmp2
