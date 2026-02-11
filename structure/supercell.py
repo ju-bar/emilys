@@ -142,6 +142,15 @@ class supercell:
             in list l_atoms_idx and replaces partial site occupation by
             full atom occupations.
 
+        visualize_structure_2d(plane, atom_radius, figsize, invert_y):
+            Plots the struture for a given plane projection using matplotlib.
+
+        orient_box(new_c, new_b, new_box_size):
+            Changes orientation such that the new c axis is new_c and 
+            the new b axis is new_bin the old box coordinates. The new
+            box size is set to new_box_size and the space is filled
+            with atoms using periodic boundary conditions.
+
     """
 
     def __init__(self):
@@ -187,7 +196,7 @@ class supercell:
         """
         l_ac = np.cos( np.deg2rad(self.angles) ).round(15)
         l_as = np.sin( np.deg2rad(self.angles) ).round(15)
-        assert np.abs(l_as[2]) > 0., 'cell angle gamma is inavlid'
+        assert np.abs(l_as[2]) > 0., 'cell angle gamma is invalid'
         return np.array([
                 [self.a0[0], self.a0[1] * l_ac[2], self.a0[2] * l_ac[1]],
                 [0. , self.a0[1] * l_as[2], self.a0[2] * ( l_ac[0] - l_ac[1] * l_ac[2] ) / l_as[2] ],
@@ -287,12 +296,13 @@ class supercell:
             occ = self.l_atoms[i].occ
             charge = self.l_atoms[i].charge
             faniso = self.l_atoms[i].faniso
+            label = self.l_atoms[i].label
             for iz in range(0, num_tile[2]):
                 for iy in range(0, num_tile[1]):
                     for ix in range(0, num_tile[0]):
                         cshift = np.array([ix, iy, iz], dtype=float)
                         pos = ffac * (pos0 + cshift)
-                        l_at_new.append(atom(Z=Z, pos=pos, uiso=uiso, occ=occ, charge=charge, faniso=faniso))
+                        l_at_new.append(atom(Z=Z, pos=pos, uiso=uiso, occ=occ, charge=charge, faniso=faniso, label=label))
         self.a0 = self.a0 * ati
         self.l_atoms = l_at_new
         return self.a0 # return new box size
@@ -447,7 +457,8 @@ class supercell:
         #
         return d_slc
 
-    def add_atom(self, Z, uiso, pos, occ = 1.0, charge = 0.0, faniso = np.array([0.,0.,0.])):
+    def add_atom(self, Z, uiso, pos, occ = 1.0, charge = 0.0, 
+                 faniso = np.array([0.,0.,0.]), label = ""):
         """
 
         Adds an atom to the structure with given parameters.
@@ -466,13 +477,15 @@ class supercell:
                 ionic charge in units of the elementary charge
             faniso : numpy.ndarray([f1, f2, angle], dtype=float)
                 relative anisotropy parameters
+            label : str
+                atom label string
         
         Returns
         -------
             int
                 The index at which the atom was added to the list member l_atoms.
         """
-        ato = atom(Z, pos, uiso, occ, charge, faniso)
+        ato = atom(Z, pos, uiso, occ, charge, faniso, label)
         self.l_atoms.append(ato)
         return len(self.l_atoms)-1
 
@@ -1418,7 +1431,8 @@ class supercell:
             self.l_atoms = self.l_atoms + l_atoms_occ
         return
     
-    def visualize_structure_2d(self, plane='xy', atom_radius=0.3, figsize=(8, 8), invert_y=False):
+    def visualize_structure_2d(self, plane='xy', atom_radius=0.3, figsize=(8, 8)
+                               ,show_labels=False,invert_y=False):
         """
         Visualizes a structure in 2D orthographic projection with depth-based transparency.
 
@@ -1426,6 +1440,7 @@ class supercell:
             plane : 'xy', 'xz', or 'yz' — plane to project onto
             atom_radius : float — radius scale of atoms (in Å)
             figsize : tuple — matplotlib figure size
+            show_labels : boolean - flags drawing labels
             invert_y : boolean - flags inversion of the y axis
         """
         # Extract lattice constants (assume orthorhombic)
@@ -1506,6 +1521,8 @@ class supercell:
             circle = Circle((x, y), radius=radius,
                             facecolor=color, edgecolor='black', linewidth=0.5, alpha=alpha)
             ax.add_patch(circle)
+            if show_labels:
+                ax.text(x, y, catom.label, c='k', alpha=alpha+0.2, va='center', ha='center')
 
         ax.set_xlim(0, limits[0])
         ax.set_ylim(0, limits[1])
@@ -1516,3 +1533,72 @@ class supercell:
         ax.set_title(f"2D projection: {plane.upper()} (depth shading)")
         plt.tight_layout()
         plt.show()
+
+    def orient_box(self, new_a, new_b, new_c):
+        """
+        Changes orientation using new box axes. Periodic boundary conditions are applied.
+
+        :param object, self: Object reference
+        :param array_like, new_a: New a axis in current box coordinates, e.g., [1, 1, 0]
+        :param array_like, new_b: New b axis in current box coordinates, e.g., [0, 0, 1]
+        :param array_like, new_c: New c axis in current box coordinates, e.g., [1, -1, 0]
+
+        :return supercell: Returns a new supercell object.
+
+        """
+        base1 = self.get_basis() # this transforms current box coordinates to real coordinates
+        ibase1 = np.linalg.inv(base1) # this transforms real coordinates to current box coordinates
+        nc = supercell()
+        base2t = np.array([ # new basis vectors in real coordinates
+            np.dot(base1, new_a),
+            np.dot(base1, new_b),
+            np.dot(base1, new_c)
+        ])
+        print(f"new basis vectors: {base2t}")
+        nc.a0 = np.array([ # new box dimensions
+            np.linalg.norm(base2t[0]),
+            np.linalg.norm(base2t[1]),
+            np.linalg.norm(base2t[2]),
+        ])
+        print(f"new box dimensions: {nc.a0}")
+        nc.angles = np.degrees(np.arccos(np.array([ # new box angles
+            np.dot(base2t[1], base2t[2]) / (nc.a0[1]*nc.a0[2]),
+            np.dot(base2t[2], base2t[0]) / (nc.a0[2]*nc.a0[0]),
+            np.dot(base2t[0], base2t[1]) / (nc.a0[0]*nc.a0[1])
+        ])))
+        print(f"new box angles: {nc.angles}")
+        base2 = nc.get_basis() # this transforms new box coordinates to real coordinates after rotation
+        print(f"new basis: {base2}")
+        base2 = base2t.T # new box in current real coordinates
+        ibase2 = np.linalg.inv(base2) # this transforms from current real coordinates to new box coordinates
+        t12 = np.matmul(ibase2, base1) # this transforms current box to new box coordinates
+        print(f"box transform old->new: {t12}")
+        t21 = np.linalg.inv(t12) # this transforms from new box coordinates to current box coordinates
+        print(f"box transform new->old: {t21}")
+        # determine tiling range of current box in new box
+        # by getting the new box end-points in current box coordinates
+        t_lo = np.array([0.,0.,0.], dtype=float); t_hi = np.array([0.,0.,0.], dtype=float) # initialize
+        corn = [[1.,0.,0.],[1.,1.,0.],[1.,0.,1.],[0.,1.,0.],[0.,1.,1.],[0.,0.,1.],[1.,1.,1.]]
+        for c in corn:
+            vc1 = np.dot(t21, c) # corner of new box in current box coordinates
+            for i in range(len(vc1)):
+                t_lo[i] = min(t_lo[i], vc1[i])
+                t_hi[i] = max(t_hi[i], vc1[i])
+        it_lo = np.floor(t_lo).astype(int)
+        it_hi = np.ceil(t_hi).astype(int)
+        print(f"low tiling limits : {it_lo}")
+        print(f"high tiling limits: {it_hi}")
+        # loop over tilings and add atoms to the new supercell
+        for i, ato in enumerate(self.l_atoms):
+            for i2 in range(it_lo[2], it_hi[2]+1):
+                for i1 in range(it_lo[1], it_hi[1]+1):
+                    for i0 in range(it_lo[0], it_hi[0]+1):
+                        p0 = np.array([i0, i1, i2], dtype=float)
+                        p1 = p0 + ato.pos
+                        p2 = np.dot(t12, p1)
+                        if np.all(p2 >= 0.0) and np.all(p2 < 1.0):
+                            nc.add_atom(Z=ato.Z, uiso=ato.uiso, pos=p2, 
+                                        occ=ato.occ, charge=ato.charge, 
+                                        faniso=ato.faniso, label=ato.label)
+        return nc
+

@@ -87,13 +87,15 @@ class atom:
 
     def __init__(self, Z=1, pos=np.array([0.,0.,0.]), 
                  uiso=0.006332574, occ=1., 
-                 charge=0., faniso=np.array([0.,0.,0.])):
+                 charge=0., faniso=np.array([0.,0.,0.]),
+                 label=""):
         self.Z = Z
         self.pos = pos
         self.uiso = uiso
         self.occ = occ
         self.charge = charge
         self.faniso = faniso
+        self.label = label
 
     def get_type_name(self, l_type_name_adds = None):
         """
@@ -110,6 +112,7 @@ class atom:
                 'occ' : adds occupancy
                 'uiso' : adds the thermal vibration mean square amplitude
                 'ion' : adds the ionic charge
+                'label' : label string
 
         """
         s = atty.atom_type_symbol[self.Z]
@@ -118,6 +121,7 @@ class atom:
         charge = ''
         occupancy = ''
         msd = ''
+        label = ''
         for addition in l_type_name_adds:
             if addition == 'ion':
                 charge = get_str_from_charge(self.charge)
@@ -125,6 +129,8 @@ class atom:
                 occupancy = f'_occ{self.occ:.3f}'
             if addition == 'uiso':
                 msd = f'_uiso{self.uiso:.6f}'
-        return s + charge + occupancy + msd
+            if addition =='label':
+                label = self.label
+        return s + charge + occupancy + msd + label
 
     
