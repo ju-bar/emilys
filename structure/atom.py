@@ -55,7 +55,63 @@ def get_symb_charge(s):
         symbol = s
     return symbol, charge
 
-        
+def get_uiso2(uxx:float, uyy:float):
+    """
+    Calculates the isotropic equivalent from an in-plane anisotropic MSD.
+    
+    :param float, uxx: element U_xx of the tensor
+    :param float, uyy: element U_yy of the tensor
+
+    Returns: float
+        uiso = (uxx + uyy)/2
+    """
+    return (uxx + uyy)*0.5
+
+def get_uani_to_faniso2(uxx:float, uyy:float, uxy:float):
+    """
+    Calculates the fx, fy, angle parameters from an in-plane anisotropic MSD.
+    
+    :param uxx: element U_xx of the tensor
+    :type uxx: float
+    :param uyy: element U_yy of the tensor
+    :type uyy: float
+    :param uxy: element U_xy=U_yx of the tensor
+    :type uxy: float
+    
+    
+    Returns: (float, float, float)
+        (fx, fy, angle)
+    """
+    ueq = get_uiso2(uxx, uyy)
+    udlt = np.sqrt(0.25*(uxx-uyy)**2 + uxy**2) # tensor eigenvalue difference
+    f1 = 1.0; f2 = 1.0; uang = 0. # init relative aniso params
+    if np.abs(udlt) > 0.0:
+        uang = np.atan2(2*uxy, uxx-uyy) # eigenvector rotation to a axis
+        f1 = np.sqrt(uxx/ueq)
+        f2 = np.sqrt(uyy/ueq)
+    return (f1, f2, uang)
+
+def get_faniso_to_uani2(uiso:float, f1:float, f2:float, angle:float):
+    """
+    Calculates the anisotropic MSD tensor from alternative parameters
+    
+    :param uiso: isotropic MSD
+    :type uiso: float
+    :param f1: axis 1 anisotropy
+    :type f1: float
+    :param f2: axis 2 anisotropy
+    :type f2: float
+    :param angle: rotation of axis 1 to x-axis
+    :type angle: float
+
+    Returns: (float, float, float)
+        (uxx, uyy, uxy)
+    """
+    c2a = np.cos(2 * angle); s2a = np.sin(2 * angle)
+    uxx = uiso * (1.0 + 0.5*(f1**2 - f2**2) * c2a)
+    uyy = uiso * (1.0 - 0.5*(f1**2 - f2**2) * c2a)
+    uxy = uiso * 0.5 * (f1**2 - f2**2) * s2a
+    return (uxx, uyy, uxy)
 
 class atom:
     """
@@ -87,7 +143,7 @@ class atom:
 
     def __init__(self, Z=1, pos=np.array([0.,0.,0.]), 
                  uiso=0.006332574, occ=1., 
-                 charge=0., faniso=np.array([0.,0.,0.]),
+                 charge=0., faniso=np.array([1.,1.,0.]),
                  label=""):
         self.Z = Z
         self.pos = pos
@@ -129,8 +185,8 @@ class atom:
                 occupancy = f'_occ{self.occ:.3f}'
             if addition == 'uiso':
                 msd = f'_uiso{self.uiso:.6f}'
-            if addition =='label':
+            if addition == 'label':
                 label = self.label
-        return s + charge + occupancy + msd + label
+        return s + label + charge + occupancy + msd
 
     

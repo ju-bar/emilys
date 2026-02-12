@@ -71,6 +71,12 @@ class supercell:
             Returns a dictionary listing atomic types and sites assigned
             to these types for all atoms indexed in list l_atoms_idx.
 
+        get_sites_in_slices(slice_plane, periodic, l_atoms_idx, l_type_name_adds):
+
+            Returns a dictionary with types and their sites distributed into slices.
+            The current structure is sliced along the c (z) direction at the given
+            slice planes in fractional coordinates z/c.
+
         add_atom(Z, uiso, pos, occ, charge, faniso):
             Adds an atom to the structure with given parameters.
 
@@ -357,6 +363,7 @@ class supercell:
                     'occ' : adds occupancy
                     'uiso' : adds the thermal vibration mean square amplitude
                     'ion' : adds the ionic charge
+                    'label' : adds the atom label string
 
             Returns
             -------
@@ -383,7 +390,8 @@ class supercell:
                         d[s]['sites'].append(a.pos)
                         d[s]['id'].append(i)
                     else: # add new type
-                        d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge, 'sites' : [a.pos], 'id' : [i] }
+                        d[s] = { 'Z' : a.Z, 'occ' : a.occ, 'uiso' : a.uiso, 'ion' : a.charge
+                                ,'faniso' : a.faniso, 'sites' : [a.pos], 'id' : [i] }
         return d
     
     def get_sites_in_slices(self, slice_planes=np.array([0.,1.]), periodic=False, l_atoms_idx=None, l_type_name_adds=None):
@@ -407,6 +415,7 @@ class supercell:
                 'occ' : adds occupancy
                 'uiso' : adds the thermal vibration mean square amplitude
                 'ion' : adds the ionic charge
+                'label' : adds the label string
 
         Returns
         -------
