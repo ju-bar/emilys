@@ -139,6 +139,9 @@ class atom:
             Returns a string for an atom type name with possible additions
             depending on other atom parameters.
 
+        get_dict()
+            Returns a dict with all atom data.
+
     """
 
     def __init__(self, Z=1, pos=np.array([0.,0.,0.]), 
@@ -189,4 +192,12 @@ class atom:
                 label = self.label
         return s + label + charge + occupancy + msd
 
-    
+    def get_dict(self):
+        """
+        Returns atom data as dict.
+        """
+        s = atty.atom_type_symbol[self.Z]
+        return {  'symbol' : s, 'Z' : self.Z, 'pos' : self.pos, 'label' : self.label
+                , 'charge' : self.charge, 'occ' : self.occ, 'uiso' : self.uiso
+                , 'faniso' : self.faniso
+                }
