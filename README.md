@@ -2,14 +2,14 @@
 
 Electron Microscopy Image anaLYSis tools
 
-Version: 0.1.8
+Version: 0.1.9
 
 ## Authors and Copyright
 
 Juri Barthel, 
 Forschungszentrum Jülich GmbH, 52425 Jülich, Germany
 
-Copyright (c) 2019 - 2024 - Forschungszentrum Jülich GmbH
+Copyright (c) 2019 - 2026 - Forschungszentrum Jülich GmbH
    
 Published under the GNU General Public License, version 3,
 see <http://www.gnu.org/licenses/> and LICENSE!
@@ -24,6 +24,8 @@ If you just want to use it, install via
 
 ## Changes
 
+* Version 0.1.9:
+Multiple smapller additions.
 * Version 0.1.8:
 Added mean squared displacement functions and other smaller changes.
 * Version 0.1.7:
