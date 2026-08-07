@@ -165,6 +165,80 @@ class supercell:
         self.basis = np.array([[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]]) # list of basis vectors x, y, z
         self.l_atoms = [] # list of atoms
         self.d_add = {} # additional data
+        self._voxel_valid = False
+        self._voxel_atoms = {}
+        self._atom_voxel = None
+        self._voxel_dims = None
+        self._voxel_cutoff = None
+
+    def _ensure_voxels(self, max_dist, force=False):
+
+        voxel_dims = self._get_voxel_dims(max_dist)
+
+        if (force or
+            not self._voxel_valid or
+            not np.array_equal(voxel_dims, self._voxel_dims)):
+            
+            self._build_voxels(max_dist)
+
+    def _get_voxel_dims(self, max_dist):
+
+        basis = self.get_basis()
+
+        a, b, c = basis.T
+
+        volume = abs(np.dot(a, np.cross(b, c)))
+
+        heights = np.array([
+            volume / np.linalg.norm(np.cross(b, c)),
+            volume / np.linalg.norm(np.cross(c, a)),
+            volume / np.linalg.norm(np.cross(a, b))
+        ])
+
+        dims = np.maximum(
+            1,
+            np.floor(heights / max_dist).astype(int)
+        )
+
+        return dims
+
+    def _invalidate_voxels(self):
+
+        self._voxel_valid = False
+
+    def _build_voxels(self, max_dist):
+
+        self._voxel_valid = False
+        self._voxel_atoms = {}
+        self._atom_voxel = None
+        self._voxel_dims = None
+        self._voxel_cutoff = None
+
+        n = len(self.l_atoms)
+        if n == 0:
+            return
+        
+        self._voxel_dims = self._get_voxel_dims(max_dist)
+        self._atom_voxel = np.zeros((n,3), dtype=int)
+
+        for idx, atom in enumerate(self.l_atoms):
+
+            vx_coord = self._get_voxel_coordinates(atom.pos)
+
+            self._atom_voxel[idx,:] = vx_coord
+
+            key = tuple(vx_coord)
+
+            if key in self._voxel_atoms:
+                self._voxel_atoms[key].append(idx)
+            else:
+                self._voxel_atoms[key] = [idx]
+
+        self._voxel_cutoff = max_dist
+        self._voxel_valid = True
+
+    def _get_voxel_coordinates(self, fpos):
+        return np.floor(fpos * self._voxel_dims).astype(np.int32)
 
     def copy(self):
         return deepcopy(self)
@@ -1060,8 +1134,81 @@ class supercell:
                     l_close.append(l_close_cur) # append to output list
                     if debug: print('added list', l_close_cur)
         return l_close
-    
-    def list_neigbors(self, idx: int, periodic: bool = True, 
+
+    def list_neighbors_within(self, idx: int, max_dist: float):
+        """
+        Lists atoms within max_dist of atom idx using the voxel neighbor search.
+
+        Parameters
+        ----------
+        idx : int
+            Index of reference atom.
+        max_dist : float
+            Maximum neighbor distance.
+
+        Returns
+        -------
+        list, list
+            Neighbor atom indices and corresponding distances.
+        """
+
+        self._ensure_voxels(max_dist)
+        if not self._voxel_valid:
+            raise RuntimeError("Voxel structure is not initialized.")
+
+        n = len(self.l_atoms)
+        assert idx < n, "Reference atom index out of range."
+
+        # reference atom
+        pos_ref = self.l_atoms[idx].pos
+
+        # voxel of reference atom
+        vx, vy, vz = self._atom_voxel[idx]
+
+        nx, ny, nz = self._voxel_dims
+
+        candidates = []
+
+        # collect atoms in surrounding voxels
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+
+                    key = (
+                        (vx + dx) % nx,
+                        (vy + dy) % ny,
+                        (vz + dz) % nz
+                    )
+
+                    if key in self._voxel_atoms:
+                        candidates.extend(self._voxel_atoms[key])
+
+        # exact distance filtering
+        neighbors = []
+        distances = []
+
+        basis = self.get_basis().T
+
+        for jdx in candidates:
+
+            if jdx == idx:
+                continue
+
+            pos_test = self.l_atoms[jdx].pos
+
+            # periodic fractional distance
+            fdist = ((pos_test - pos_ref + 0.5) % 1.0) - 0.5
+
+            vec_dist = np.dot(basis, fdist)
+            dist = np.linalg.norm(vec_dist)
+
+            if dist <= max_dist:
+                neighbors.append(jdx)
+                distances.append(dist)
+
+        return neighbors, distances
+
+    def list_neighbors(self, idx: int, periodic: bool = True, 
                       max_dist: float | None = None,
                       allowed_Z: list | None = None):
         """
@@ -1611,3 +1758,43 @@ class supercell:
                                         faniso=ato.faniso, label=ato.label)
         return nc
 
+    def remove_vacuum_z(self, keep_vacuum_z = 0.0):
+        """
+        Removes vacuum around the atoms along the z direction, keeping at least
+        some space on top and bottom equal to keep_vacuum_z in physical distance
+        to the new box z size.
+
+        :param float, default 0.0, keep_vacuum_z: remaining vacuum size along z in physical units as a0
+
+        """
+        n = len(self.l_atoms)
+        
+        if (n > 0 and self.a0[2] > 0.0):
+
+            fz0 = np.inf
+            fz1 = -np.inf
+            fzk = abs(keep_vacuum_z / self.a0[2])
+
+            for iat in range(0, n):
+                fz = self.l_atoms[iat].pos[2]
+                fz1 = max(fz1, fz)
+                fz0 = min(fz0, fz)
+
+            fz0 -= fzk
+            fz1 += fzk
+            dfz = fz1 - fz0
+
+            if dfz <=0.0:
+                print("remove_vacuum_z failed due to zero target size.")
+                return
+
+            c_new = dfz * self.a0[2]
+
+            for iat in range(0, n):
+                fz_old = self.l_atoms[iat].pos[2]
+                fz_new = (fz_old - fz0) / dfz
+                self.l_atoms[iat].pos[2] = fz_new
+
+            self.a0[2] = c_new
+            print(f"remove_vacuum_z has changed the box z size to {self.a0[2]:.5f}.")
+            self._invalidate_voxels()

@@ -204,3 +204,41 @@ def poly_intersect(V1, V2, tol=1.0E-6, debug=False):
         #print('time (poly_intersect) intersection generation: {:f}'.format(t2))
     #print('time (poly_intersect) all geometry: {:f}'.format(ts))
     return V3
+#
+#==============================================================================
+def rot_mat(theta, phi, alpha):
+    """
+    Calculates the rotation matrix from Euler-Rodrigues formula.
+    The rotation is by an angle alpha around the axis defined
+    by the angles theta and phi.
+    Apply like
+    v_rot = rotm @ v
+
+    Parameters
+    ----------
+    theta : float
+        polar angle of the rotation axis (rad), range [0, pi]
+    phi : float
+        azimuth angle of the rotation axis (rad) , range [0, 2pi)
+    alpha : float
+        rotation around the rotation axis (rad), range [0, 2pi)
+
+    Returns
+    -------
+    numpy.ndarray, dtype=float
+        Rotation matrix
+
+    """
+    sat = np.sin(theta); cat = np.cos(theta); sap = np.sin(phi); cap = np.cos(phi)
+    sra = np.sin(alpha); cra = np.cos(alpha)
+    nx = sat * cap
+    ny = sat * sap
+    nz = cat
+    raxis = np.array([sat * cap, sat * sap, cat])
+    # roatation matrix from Euler-Rodrigues formula, remove numerical noise
+    rotm = np.array([
+        [cra + nx*nx*(1-cra), nx*ny*(1-cra)-nz*sra, nx*nz*(1-cra)+ny*sra],
+        [ny*nx*(1-cra)+nz*sra, cra + ny*ny*(1-cra), ny*nz*(1-cra)-nx*sra],
+        [nz*nx*(1-cra)-ny*sra, nz*ny*(1-cra)+nx*sra, cra + nz*nz*(1-cra)]
+        ])
+    return rotm
